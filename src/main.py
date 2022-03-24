@@ -1,7 +1,8 @@
 import argparse
 import os
+import experiment
 # from clearml import Task
-from aiplatform.config import cfg as aip_cfg
+# from aiplatform.config import cfg as aip_cfg
 
 if __name__ == '__main__':
 
@@ -17,13 +18,13 @@ if __name__ == '__main__':
     # task.execute_remotely(queue_name=aip_cfg.clearml.queue,exit_process=True)
 
     # #actual code here
-    import dask.dataframe as dd
+    # import dask.dataframe as dd
 
-    from model import experiment
-    from model.config import cfg
-    from pipeline import pipeline
-    from pipeline.config import cfg as pipeline_cfg
-    from aiplatform import s3utility
+    # from model import experiment
+    # from model.config import cfg
+    # from pipeline import pipeline
+    # from pipeline.config import cfg as pipeline_cfg
+    # from aiplatform import s3utility
 
     parser = argparse.ArgumentParser()
     parser = experiment.Experiment.add_experiment_args(parser)
@@ -44,6 +45,6 @@ if __name__ == '__main__':
     # s3_utils.s3_download_folder('valid','/src/data/valid')
 
     exp = experiment.Experiment(args, task)
-    # exp.run_experiment()
-    exp.create_torchscript_model('class_model_v2.ckpt')
+    exp.run_experiment()
+    # exp.create_torchscript_model('class_model_v2.ckpt')
     # exp.create_torchscript_cpu_model('id_model4.ckpt')

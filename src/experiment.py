@@ -1,86 +1,39 @@
-import math
-import time
-import random
+
+# import pytorch_lightning as pl
+# from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+# from pytorch_lightning.loggers import TensorBoardLogger
+# from aiplatform.s3utility import S3Callback, S3Utils
+# from aiplatform.config import cfg as aip_cfg
+# from .model import  
+# from . import transforms
+# from .config import cfg
+# from .dataset import FlightDataset
+
+
+# from facenet_pytorch import MTCNN, InceptionResnetV1, fixed_image_standardization, training
+from model.inception_resnet_v1 import InceptionResnetV1
+from model.mtcnn import MTCNN, fixed_image_standardization
+from model.utils import training
+from data.preprocessor import PreProcessor
+
+import torch
+from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch import optim
+from torch.optim.lr_scheduler import MultiStepLR
+from torch.utils.tensorboard import SummaryWriter
+from torchvision import datasets, transforms
+import numpy as np
 import os
 import argparse
-import shutil
-import numpy as np
-import pandas as pd
-from typing import Any, Callable, Dict, Optional, Union
-from pathlib import Path
-from sklearn.model_selection import train_test_split
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
-from aiplatform.s3utility import S3Callback, S3Utils
-from aiplatform.config import cfg as aip_cfg
-from .model import Seq2Seq
-from . import transforms
-from .config import cfg
-from .dataset import FlightDataset
-
 
 # TODO: check tensor types
 
 
-def calc_accuracy(output, Y, mask):
-    """
-    Calculate the accuracy (point by point evaluation)
-    :param output: output from the model (tensor)
-    :param Y: ground truth given by dataset (tensor)
-    :param mask: used to mask out the padding (tensor)
-    :return: accuracy used for validation logs (float)
-    """
-    _, max_indices = torch.max(output.data, 1)
-    max_indices = max_indices.view(mask.shape[1], mask.shape[0]).permute(1, 0)
-    Y = Y.view(mask.shape[1], mask.shape[0]).permute(1, 0)
-    max_indices = torch.masked_select(max_indices, mask)
-    Y = torch.masked_select(Y, mask)
-    train_acc = (max_indices == Y).sum().item()/max_indices.size()[0]
-    return train_acc, max_indices, Y
-
-# def loss_function(trg, output, mask):
-#     """
-#     Calculate the loss (point by point evaluation)
-#     :param trg: ground truth given by dataset (tensor)
-#     :param output: output from the model (tensor)
-#     :param mask: used to mask out the padding (tensor)
-#     :return: loss needed for backpropagation and logging (float)
-#     """
-#     trg = trg[1:].permute(1,0,2)
-#     output = output[1:].permute(1,0,2)
-#     mask = mask.unsqueeze(2).expand(trg.size())
-#     trg = torch.masked_select(trg, mask)
-#     output = torch.masked_select(output, mask)
-#     label_mask = (trg != 0)
-#     selected = torch.masked_select(output, label_mask)
-#     loss = -torch.sum(selected) / selected.size()[0]
-#     return loss
+def accuracy(logits, y):
+    _, preds = torch.max(logits, 1)
+    return (preds == y).float().mean()
 
 
-def default_collate(batch, y_padding_value, mode3_padding_value, callsign_padding_value):
-    """
-    Stack the tensors from dataloader and pad sequences in batch
-    :param batch: batch from the torch dataloader
-    :return: stacked input to the seq2seq model
-    """
-    batch.sort(key=lambda x: x[-1], reverse=True)
-    batch_x, batch_y, batch_mode3, batch_callsign, batch_len = zip(*batch)
-    batch_pad_x = torch.nn.utils.rnn.pad_sequence(batch_x, batch_first=True)
-    batch_pad_y = torch.nn.utils.rnn.pad_sequence(
-        batch_y, batch_first=True, padding_value=y_padding_value)
-    batch_pad_mode3 = torch.nn.utils.rnn.pad_sequence(
-        batch_mode3, batch_first=True, padding_value=mode3_padding_value)
-    batch_pad_callsign = torch.nn.utils.rnn.pad_sequence(
-        batch_callsign, batch_first=True, padding_value=callsign_padding_value)
-
-    batch_len = torch.Tensor(batch_len).type(torch.int64).unsqueeze(1)
-    return [batch_pad_x, batch_pad_y, batch_pad_mode3, batch_pad_callsign, batch_len]
 
 
 class Experiment(object):
@@ -89,267 +42,186 @@ class Experiment(object):
     def __init__(self, args, clearml_task=None):
 
         self.clearml_task = clearml_task
-        self.datapath = args.data_path
-        self.features = cfg['data']['features']
-        self.callsign_column = args.data_identifiers_callsign_data_column
-        self.mode3_column = args.data_identifiers_mode3_data_column
-        self.time_encoding_dims = args.data_time_encoding_dims
-        self.n_features = len(cfg['data']['features']) + \
-            self.time_encoding_dims + 8
-        self.label = args.data_label
+        self.args = args
+        self.data_dir = args.data_dir       # data_dir = 'exp4/train'
+        self.batch_size = args.batch_size   # batch_size = 32
+        self.epochs = args.epochs           # epochs = 20
+        self.model_path = args.model_path   # path to export model to
+        self.workers = 0 if os.name == 'nt' else 8
 
-        self.weight_by = args.data_weight_by
-
-        self.d_model = args.model_d_model
-        self.dim_feedforward = args.model_dim_feedforward
-        self.nhead = args.model_nhead
-        self.num_encoder_layers = args.model_num_encoder_layers
-        self.num_decoder_layers = args.model_num_decoder_layers
-        self.enc_dropout = args.model_enc_dropout
-        self.dec_dropout = args.model_dec_dropout
-        self.input_dropout = args.model_input_dropout
-        self.transformer_activation = args.model_transformer_activation
-
-        self.checkpoint_dir = args.train_checkpoint_dir
-        self.batch_size = args.train_batch_size
-        self.learning_rate = args.train_lr
-
-        self.n_epochs = args.train_epochs
-        self.auto_lr = args.train_auto_lr
-        self.n_gpu = args.train_n_gpu
-        self.accelerator = args.train_accelerator
-        self.model_save_period = args.train_model_save_period
-        self.log_every_n_steps = args.train_log_every_n_steps
-        self.save_top_k = args.train_save_top_k
-        self.num_workers = args.train_num_workers
-
-        self.id_embed_dim = args.model_id_embed_dim
-        self.n_mode3_token_embedding = args.model_n_mode3_token_embedding
-        self.n_mode3_token_layers = args.model_n_mode3_token_layers
-
-        self.n_callsign_token_embedding = args.model_n_callsign_token_embedding
-        self.n_callsign_token_layers = args.model_n_callsign_token_layers
-
-        self.seed = args.train_seed
-        self.transforms = cfg['data']['transforms']
-        self.lr_schedule = cfg['train']['lr_schedule']
-
-    def _get_logger(self):
-        logger = TensorBoardLogger(self.checkpoint_dir, name='logs')
-        return logger
-
-    def _get_callbacks(self):
-        callbacks = []
-
-        # checkpoint_callback = CustomCheckpoint(
-        #     task_name=self.clearml_task.name,
-        #     dirpath=self.checkpoint_dir,
-        #     filename = '-{epoch}',
-        #     save_top_k= self.save_top_k,
-        #     verbose=True,
-        #     monitor='val_loss',
-        #     mode='min',
-        #     period = self.model_save_period
-        #     )
-        checkpoint_callback = ModelCheckpoint(
-            dirpath=self.checkpoint_dir,
-            filename='{k}-{epoch}',
-            save_top_k=self.save_top_k,
-            verbose=True,
-            save_last=True,
-            monitor='val_loss',
-            mode='min',
-            every_n_val_epochs=self.model_save_period
-        )
-        callbacks.append(checkpoint_callback)
-        if self.lr_schedule['scheduler']:
-            lr_logging_callback = LearningRateMonitor(logging_interval='step')
-            callbacks.append(lr_logging_callback)
-
-        if self.clearml_task:
-            callbacks.append(S3Callback(self.clearml_task.name))
-
-        return callbacks
 
     def run_experiment(self):
-        # if os.path.exists(self.checkpoint_dir):
-        #     shutil.rmtree(self.checkpoint_dir)
+        device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        
+        print('Running on device: {}'.format(device))
+        mtcnn = MTCNN(
+            image_size=160, margin=0, min_face_size=20,
+            thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True,
+            device=device
+        )
+        # Use MTCNN to preprocess & crop images
+        preprocess = PreProcessor(mtcnn, self.args)
+        dataset = preprocess.crop_img(training.collate_pil)
 
-        # os.makedirs(os.path.join(self.checkpoint_dir,'logs'), exist_ok=True)
+        # Init Resnet model
+        resnet = InceptionResnetV1(
+            classify=True,
+            pretrained='vggface2',
+            num_classes=len(dataset.class_to_idx)
+        ).to(device)
 
-        pl.seed_everything(self.seed)
+        # Freeze most layers
+        count=0
+        for child in resnet.children():
+            if count<=15:
+                for param in child.parameters():
+                    param.requires_grad = False
+            count+=1
+        
+        optimizer = optim.Adam(resnet.parameters(), lr=0.001)
+        scheduler = MultiStepLR(optimizer, [5, 10])
 
-        train_dataset = FlightDataset(self.datapath, self.features, self.label, self.mode3_column,
-                                      self.callsign_column, "train", self.transforms, self.time_encoding_dims)
-        valid_dataset = FlightDataset(self.datapath, self.features, self.label, self.mode3_column,
-                                      self.callsign_column, "valid", self.transforms, self.time_encoding_dims)
+        trans = transforms.Compose([
+            np.float32,
+            transforms.ToTensor(),
+            fixed_image_standardization
+        ])
 
-        y_padding = train_dataset.labels_map['pad']
-        callsign_padding = train_dataset.CALLSIGN_CHAR2IDX['_']
-        mode3_padding = train_dataset.MODE3_CHAR2IDX['_']
-        train_loader = DataLoader(train_dataset, collate_fn=lambda x: default_collate(x, y_padding, mode3_padding, callsign_padding),
-                                  batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
-        valid_loader = DataLoader(valid_dataset, collate_fn=lambda x: default_collate(x, y_padding, mode3_padding, callsign_padding),
-                                  batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+        dataset = datasets.ImageFolder(self.data_dir + '_cropped', transform=trans)
+        img_inds = np.arange(len(dataset))
+        np.random.shuffle(img_inds)
+        train_inds = img_inds[:int(0.8 * len(img_inds))]
+        val_inds = img_inds[int(0.8 * len(img_inds)):]
 
-        class_weights = {
-            'label_segment_count': train_dataset.get_class_weights('label_segment_count'),
-            'label_point_count': train_dataset.get_class_weights('label_point_count'),
-            'None': train_dataset.get_class_weights('None')
+        train_loader = DataLoader(
+            dataset,
+            num_workers=self.workers,
+            batch_size=self.batch_size,
+            sampler=SubsetRandomSampler(train_inds)
+        )
+        val_loader = DataLoader(
+            dataset,
+            num_workers=self.workers,
+            batch_size=self.batch_size,
+            sampler=SubsetRandomSampler(val_inds)
+        )
+        loss_fn = torch.nn.CrossEntropyLoss()
+        metrics = {
+            'fps': training.BatchTimer(),
+            'acc': training.accuracy
         }
-        # for batch in train_loader:
-        #     print(batch[0].shape)
-        #     print(batch[1])
-        #     # print(batch[2])
-        #     break
-        # -2 for n_class because we have two special tokens
 
-        labels_map = train_dataset.labels_map
-        n_callsign_tokens = len(train_dataset.CALLSIGN_CHAR2IDX)
-        n_mode3_tokens = len(train_dataset.MODE3_CHAR2IDX)
-        n_classes = train_dataset.n_classes
-        distributed = self.n_gpu > 1
-        if self.clearml_task:
-            if self.weight_by != 'None':
-                self.clearml_task.connect_configuration({str(i): val for i, val in enumerate(
-                    class_weights[self.weight_by].cpu().numpy())}, name='Class Weights')
-            self.clearml_task.connect_configuration(
-                labels_map, name='Labels Map')
+        writer = SummaryWriter()
+        writer.iteration, writer.interval = 0, 10
 
-            metas = {'Train': train_dataset.metadata.copy(
-            ), 'Valid': valid_dataset.metadata.copy()}
-            for meta in metas.keys():
-                for key in ['labels', 'length', 'track_ids']:
-                    metas[meta].pop(key)
-                self.clearml_task.connect_configuration(
-                    metas[meta], name='{} Metadata'.format(meta))
-
-        # load from checkpoint
-
-        if cfg['train']['resume_from_checkpoint']:
-            s3_utils = S3Utils(aip_cfg.s3.bucket,
-                               aip_cfg.s3.model_artifact_path)
-            model_path = os.path.join(
-                cfg['train']['checkpoint_dir'], 'latest_model.ckpt')
-            s3_utils.s3_download_file(os.path.join(
-                self.clearml_task.name, 'latest_model.ckpt'), model_path)
-            model = Seq2Seq.load_from_checkpoint(checkpoint_path=model_path)
-        else:
-
-            model = Seq2Seq(self.learning_rate,
-                            self.lr_schedule,
-                            self.n_features,
-                            self.d_model,
-                            self.dim_feedforward,
-                            self.nhead,
-                            self.num_encoder_layers,
-                            self.num_decoder_layers,
-                            self.enc_dropout,
-                            self.dec_dropout,
-                            self.input_dropout,
-                            self.transformer_activation,
-                            self.id_embed_dim,
-                            n_mode3_tokens,
-                            self.n_mode3_token_embedding,
-                            self.n_mode3_token_layers,
-                            n_callsign_tokens,
-                            self.n_callsign_token_embedding,
-                            self.n_callsign_token_layers,
-                            n_classes,
-                            class_weights,
-                            self.weight_by,
-                            labels_map,
-                            distributed)
-        callbacks = self._get_callbacks()
-        logger = self._get_logger()
-
-        trainer = pl.Trainer(
-            gpus=self.n_gpu,
-            accelerator=self.accelerator if self.n_gpu > 1 else None,
-            callbacks=callbacks,
-            logger=logger,
-            max_epochs=self.n_epochs,
-            default_root_dir=self.checkpoint_dir,
-            log_every_n_steps=self.log_every_n_steps
+        print('\n\nInitial')
+        print('-' * 10)
+        resnet.eval()
+        training.pass_epoch(
+            resnet, loss_fn, val_loader,
+            batch_metrics=metrics, show_running=True, device=device,
+            writer=writer
         )
 
-        if self.auto_lr:
-            lr_finder = trainer.tuner.lr_find(
-                model, train_loader, valid_loader)
-            new_lr = lr_finder.suggestion()
-            model.learning_rate = new_lr
-            print('Found a starting LR of {}'.format(new_lr))
-        trainer.fit(model, train_loader, valid_loader)
+        for epoch in range(self.epochs):
+            print('\nEpoch {}/{}'.format(epoch + 1, self.epochs))
+            print('-' * 10)
+
+            resnet.train()
+            training.pass_epoch(
+                resnet, loss_fn, train_loader, optimizer, scheduler,
+                batch_metrics=metrics, show_running=True, device=device,
+                writer=writer
+            )
+
+            resnet.eval()
+            training.pass_epoch(
+                resnet, loss_fn, val_loader,
+                batch_metrics=metrics, show_running=True, device=device,
+                writer=writer
+            )
+
+        writer.close()
+        torch.save(resnet.state_dict(), self.model_path)
 
     @staticmethod
     def add_experiment_args(parent_parser):
 
-        def get_unnested_dict(d, root=''):
-            unnested_dict = {}
-            for key, value in d.items():
-                if isinstance(value, dict):
-                    unnested_dict.update(
-                        get_unnested_dict(value, root+key+'_'))
-                else:
-                    unnested_dict[root+key] = value
-            return unnested_dict
-        parser = argparse.ArgumentParser(
-            parents=[parent_parser], add_help=False)
-        unnested_args = get_unnested_dict(cfg)
-        for key, value in unnested_args.items():
-            # only parse int,float or str
-            if isinstance(value, (int, str, float)):
-                # do not parse transforms and lr schedule as we want them as nested dicts
-                if 'transforms' not in key and 'lr_schedule' not in key:
-                    parser.add_argument('--'+key, default=value)
+        parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "-d",
+            "--data_dir",
+            default='data/train',
+            help="Training Dataset Folder Path"
+        )
+        parser.add_argument(
+            "-b",
+            "--batch_size",
+            default=32,
+            type=int,
+            help="Data Loader Batch Size"
+        )
+        parser.add_argument(
+            "-e",
+            "--epochs",
+            default=20,
+            type=int,
+            help="Number of Epochs to train for"
+        )
+        parser.add_argument(
+            "-m",
+            "--model_path",
+            default='model.pt',
+            help="Path & Model Name"
+        )
 
         return parser
 
-    @staticmethod
-    def create_torchscript_model(model_name):
-        model = Seq2Seq.load_from_checkpoint(os.path.join(
-            cfg['train']['checkpoint_dir'], model_name))
+    # @staticmethod
+    # def create_torchscript_model(model_name):
+    #     model = Seq2Seq.load_from_checkpoint(os.path.join(
+    #         cfg['train']['checkpoint_dir'], model_name))
 
-        model.eval()
+    #     model.eval()
 
-        # remove_empty_attributes(model)
-        # print(vars(model._modules['input_mapper']))
-        # print('These attributes should have been removed', remove_attributes)
-        script = model.to_torchscript()
-        torch.jit.save(script, os.path.join(
-            cfg['train']['checkpoint_dir'], "model.pt"))
+    #     # remove_empty_attributes(model)
+    #     # print(vars(model._modules['input_mapper']))
+    #     # print('These attributes should have been removed', remove_attributes)
+    #     script = model.to_torchscript()
+    #     torch.jit.save(script, os.path.join(
+    #         cfg['train']['checkpoint_dir'], "model.pt"))
 
-    @staticmethod
-    def create_torchscript_cpu_model(model_name):
-        model = Seq2Seq.load_from_checkpoint(os.path.join(
-            cfg['train']['checkpoint_dir'], model_name))
+#     @staticmethod
+#     def create_torchscript_cpu_model(model_name):
+#         model = Seq2Seq.load_from_checkpoint(os.path.join(
+#             cfg['train']['checkpoint_dir'], model_name))
 
-        model.to('cpu')
-        model.eval()
+#         model.to('cpu')
+#         model.eval()
 
-        # remove_empty_attributes(model)
-        # print(vars(model._modules['input_mapper']))
-        # print('These attributes should have been removed', remove_attributes)
-        script = model.to_torchscript()
-        torch.jit.save(script, os.path.join(
-            cfg['train']['checkpoint_dir'], "model_cpu.pt"))
+#         # remove_empty_attributes(model)
+#         # print(vars(model._modules['input_mapper']))
+#         # print('These attributes should have been removed', remove_attributes)
+#         script = model.to_torchscript()
+#         torch.jit.save(script, os.path.join(
+#             cfg['train']['checkpoint_dir'], "model_cpu.pt"))
 
 
-def remove_empty_attributes(module):
-    remove_attributes = []
-    for key, value in vars(module).items():
-        if value is None:
+# def remove_empty_attributes(module):
+#     remove_attributes = []
+#     for key, value in vars(module).items():
+#         if value is None:
 
-            if key == 'trainer' or '_' == key[0]:
-                remove_attributes.append(key)
-        elif key == '_modules':
-            for mod in value.keys():
+#             if key == 'trainer' or '_' == key[0]:
+#                 remove_attributes.append(key)
+#         elif key == '_modules':
+#             for mod in value.keys():
 
-                remove_empty_attributes(value[mod])
-    print('To be removed', remove_attributes)
-    for key in remove_attributes:
+#                 remove_empty_attributes(value[mod])
+#     print('To be removed', remove_attributes)
+#     for key in remove_attributes:
 
-        delattr(module, key)
+#         delattr(module, key)
 
 
 # class CustomCheckpoint(ModelCheckpoint):
