@@ -1,4 +1,5 @@
 src/data/exp*
+src/data/img/*
 src/runs/
 *.pt
 

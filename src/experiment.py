@@ -25,33 +25,32 @@ from torchvision import datasets, transforms
 import numpy as np
 import os
 import argparse
+from clearml import Task
 
 # TODO: check tensor types
-
-
-def accuracy(logits, y):
-    _, preds = torch.max(logits, 1)
-    return (preds == y).float().mean()
-
-
-
+PROJECT_NAME = 'facenet'
 
 class Experiment(object):
 
    # should init as arguments here
-    def __init__(self, args, clearml_task=None):
-
-        self.clearml_task = clearml_task
+    def __init__(self, args):
+        self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train')
+        # print("Init successful")
         self.args = args
         self.data_dir = args.data_dir       # data_dir = 'exp4/train'
         self.batch_size = args.batch_size   # batch_size = 32
         self.epochs = args.epochs           # epochs = 20
         self.model_path = args.model_path   # path to export model to
         self.workers = 0 if os.name == 'nt' else 8
-
+        self.frozen = args.freeze_layers
+        print("Done Init")
 
     def run_experiment(self):
+        # self.clearml_task.execute_remotely()
+        # print("Execute remote successful")
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        if self.clearml_task is not None:
+            logger = self.clearml_task.get_logger()
         
         print('Running on device: {}'.format(device))
         mtcnn = MTCNN(
@@ -73,7 +72,7 @@ class Experiment(object):
         # Freeze most layers
         count=0
         for child in resnet.children():
-            if count<=15:
+            if count<=self.frozen:
                 for param in child.parameters():
                     param.requires_grad = False
             count+=1
@@ -128,26 +127,37 @@ class Experiment(object):
             print('-' * 10)
 
             resnet.train()
-            training.pass_epoch(
+            train_loss, train_metric = training.pass_epoch(
                 resnet, loss_fn, train_loader, optimizer, scheduler,
                 batch_metrics=metrics, show_running=True, device=device,
                 writer=writer
             )
 
             resnet.eval()
-            training.pass_epoch(
+            val_loss, val_metric = training.pass_epoch(
                 resnet, loss_fn, val_loader,
                 batch_metrics=metrics, show_running=True, device=device,
                 writer=writer
             )
+            if self.clearml_task is not None:
+                logger.report_scalar("acc (by epoch)", "train", iteration=epoch, value=train_metric['acc'].item())
+                logger.report_scalar("acc (by epoch)", "eval", iteration=epoch, value=val_metric['acc'].item())
+                logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=train_loss.item())
+                logger.report_scalar("loss (by epoch)", "eval", iteration=epoch, value=val_loss.item())                
 
         writer.close()
         torch.save(resnet.state_dict(), self.model_path)
 
     @staticmethod
-    def add_experiment_args(parent_parser):
+    def add_experiment_args():
 
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "-t",
+            "--task_name",
+            default='task',
+            help="Task Name for ClearML"
+        )
         parser.add_argument(
             "-d",
             "--data_dir",
@@ -169,6 +179,13 @@ class Experiment(object):
             help="Number of Epochs to train for"
         )
         parser.add_argument(
+            "-f",
+            "--freeze_layers",
+            default=16,
+            type=int,
+            help="Number of layers to freeze (Max 17, i.e. all layers frozen)"
+        )
+        parser.add_argument(
             "-m",
             "--model_path",
             default='model.pt',
@@ -176,6 +193,13 @@ class Experiment(object):
         )
 
         return parser
+
+
+if __name__ == '__main__':
+    parser = Experiment.add_experiment_args()
+    args = parser.parse_args()
+    exp = Experiment(args)
+    exp.run_experiment()
 
     # @staticmethod
     # def create_torchscript_model(model_name):
