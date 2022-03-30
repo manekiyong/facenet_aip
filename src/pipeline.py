@@ -5,6 +5,17 @@ import experiment
 
 PROJECT_NAME = 'facenet'
 
+params = {
+    'data_dir':'data/exp1/train',   # stage 1, 2
+    'batch_size':16,                # stage 1
+    'epochs':20,                    # stage 1
+    'freeze_layers':15,             # stage 1
+    'model_path':'pl.pt',           # stage 1, 2
+    'emb_dir':'data/exp1/emb'       # stage 2
+}
+
+
+
 if __name__ == '__main__':
     # Connecting ClearML with the current pipeline,
     # from here on everything is logged automatically
@@ -26,12 +37,26 @@ if __name__ == '__main__':
     pipe.add_step(name='train_model',
         base_task_project=PROJECT_NAME,
         base_task_name='pl_train',
-        parameter_override={'Args/batch_size': 32}
+        parameter_override={'Args/batch_size': params['batch_size'],
+            'Args/data_dir': params['data_dir'],
+            'Args/epochs': params['epochs'],
+            'Args/freeze_layers': params['freeze_layers'],
+            'Args/model_path': params['model_path']
+            }
+    )
+    pipe.add_step(name='generate_embedding',
+        parents=['train_model', ],
+        base_task_project=PROJECT_NAME,
+        base_task_name='pl_generate',
+        parameter_override={'Args/batch_size': params['batch_size'],
+            'Args/input': params['data_dir'],
+            'Args/output': params['emb_dir'],
+            'Args/model_path': params['model_path']
+            }
     )
     
     pipe.set_default_execution_queue('default')
-    
-    # exp.run_experiment()
+
     # pipe.add_step(name='generate_embedding', parents=['train_model', ], base_task_project=PROJECT_NAME, base_task_name=args.task_name+' generate')
 
     # for debugging purposes use local jobs

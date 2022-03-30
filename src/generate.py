@@ -36,9 +36,9 @@ class Generate(object):
 
    # should init as arguments here
     def __init__(self, args):
-        self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
-        self.input = args.input
-        self.output = args.output
+        # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
+        self.input = os.path.join(args.input, '')
+        self.output = os.path.join(args.output, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
         self.resnet.load_state_dict(torch.load(args.model_path), strict=False)
         self.resnet.eval()
@@ -47,7 +47,7 @@ class Generate(object):
 
     def generate_embedding(self, emb_id, img_folder='train/', emb_folder='emb/'):
         # # Generate Embedding, and copy holdout photos to eval folder    
-        folder_path = img_folder+emb_id+'/'
+        folder_path = img_folder+'/'+emb_id+'/'
         folder_content = os.listdir(folder_path)
 
         avg_emb = torch.zeros(512) # Reset Avg Embedding
@@ -71,12 +71,13 @@ class Generate(object):
 
 
     def generate_all(self):
+        count=0
         Path(self.output).mkdir(parents=True, exist_ok=True)
-        for i in os.listdir(args.input):
+        for i in os.listdir(self.input):
             count+=1
-            generate_embedding(i, 
-                        args.input,
-                        emb_folder=args.output)
+            self.generate_embedding(i, 
+                        self.input,
+                        emb_folder=self.output)
             
 
 
@@ -108,5 +109,5 @@ class Generate(object):
 if __name__ == '__main__':
     parser = Generate.add_generate_args()
     args = parser.parse_args()
-    exp = Generate(args)
-    exp.generate_embedding()
+    gen = Generate(args)
+    gen.generate_all()

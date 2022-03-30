@@ -27,7 +27,6 @@ import os
 import argparse
 from clearml import Task
 
-# TODO: check tensor types
 PROJECT_NAME = 'facenet'
 
 class Experiment(object):
@@ -37,7 +36,7 @@ class Experiment(object):
         self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train')
         # print("Init successful")
         self.args = args
-        self.data_dir = args.data_dir       # data_dir = 'exp4/train'
+        self.data_dir = os.path.join(args.data_dir, '')       # data_dir = 'exp4/train'
         self.batch_size = args.batch_size   # batch_size = 32
         self.epochs = args.epochs           # epochs = 20
         self.model_path = args.model_path   # path to export model to
@@ -86,7 +85,7 @@ class Experiment(object):
             fixed_image_standardization
         ])
 
-        dataset = datasets.ImageFolder(self.data_dir + '_cropped', transform=trans)
+        dataset = datasets.ImageFolder(self.data_dir[:-1] + '_cropped', transform=trans)
         img_inds = np.arange(len(dataset))
         np.random.shuffle(img_inds)
         train_inds = img_inds[:int(0.8 * len(img_inds))]
@@ -153,12 +152,6 @@ class Experiment(object):
 
         parser = argparse.ArgumentParser()
         parser.add_argument(
-            "-t",
-            "--task_name",
-            default='task',
-            help="Task Name for ClearML"
-        )
-        parser.add_argument(
             "-d",
             "--data_dir",
             default='data/train',
@@ -194,129 +187,8 @@ class Experiment(object):
 
         return parser
 
-
 if __name__ == '__main__':
     parser = Experiment.add_experiment_args()
     args = parser.parse_args()
     exp = Experiment(args)
     exp.run_experiment()
-
-    # @staticmethod
-    # def create_torchscript_model(model_name):
-    #     model = Seq2Seq.load_from_checkpoint(os.path.join(
-    #         cfg['train']['checkpoint_dir'], model_name))
-
-    #     model.eval()
-
-    #     # remove_empty_attributes(model)
-    #     # print(vars(model._modules['input_mapper']))
-    #     # print('These attributes should have been removed', remove_attributes)
-    #     script = model.to_torchscript()
-    #     torch.jit.save(script, os.path.join(
-    #         cfg['train']['checkpoint_dir'], "model.pt"))
-
-#     @staticmethod
-#     def create_torchscript_cpu_model(model_name):
-#         model = Seq2Seq.load_from_checkpoint(os.path.join(
-#             cfg['train']['checkpoint_dir'], model_name))
-
-#         model.to('cpu')
-#         model.eval()
-
-#         # remove_empty_attributes(model)
-#         # print(vars(model._modules['input_mapper']))
-#         # print('These attributes should have been removed', remove_attributes)
-#         script = model.to_torchscript()
-#         torch.jit.save(script, os.path.join(
-#             cfg['train']['checkpoint_dir'], "model_cpu.pt"))
-
-
-# def remove_empty_attributes(module):
-#     remove_attributes = []
-#     for key, value in vars(module).items():
-#         if value is None:
-
-#             if key == 'trainer' or '_' == key[0]:
-#                 remove_attributes.append(key)
-#         elif key == '_modules':
-#             for mod in value.keys():
-
-#                 remove_empty_attributes(value[mod])
-#     print('To be removed', remove_attributes)
-#     for key in remove_attributes:
-
-#         delattr(module, key)
-
-
-# class CustomCheckpoint(ModelCheckpoint):
-#     CHECKPOINT_JOIN_CHAR = "-"
-#     CHECKPOINT_NAME_LAST = "last"
-#     FILE_EXTENSION = ".ckpt"
-#     STARTING_VERSION = 1
-
-
-#     def __init__(
-#         self,
-#         task_name = None,
-#         dirpath: Optional[Union[str, Path]] = None,
-#         filename: Optional[str] = None,
-#         monitor: Optional[str] = None,
-#         verbose: bool = False,
-#         save_last: Optional[bool] = None,
-#         save_top_k: Optional[int] = None,
-#         save_weights_only: bool = False,
-#         mode: str = "min",
-#         auto_insert_metric_name: bool = True,
-#         every_n_train_steps: Optional[int] = None,
-#         every_n_val_epochs: Optional[int] = None,
-#         period: Optional[int] = None,
-#     ):
-#         super().__init__(
-#             dirpath,
-#             filename,
-#             monitor,
-#             verbose,
-#             save_last,
-#             save_top_k,
-#             save_weights_only,
-#             mode,
-#             auto_insert_metric_name,
-#             every_n_train_steps,
-#             every_n_val_epochs,
-#             period,
-#         )
-#         S3_PATH = os.path.join(aip_cfg.s3.model_artifact_path,task_name)
-#         latest_model_name = 'latest_model.ckpt'
-#         best_model_name = 'best_model.ckpt'
-
-
-#     def _save_model(self, trainer: 'pl.Trainer', filepath: str) -> None:
-#         try:
-#             if trainer.training_type_plugin.rpc_enabled:
-#                 # RPCPlugin manages saving all model states
-#                 # TODO: the rpc plugin should wrap trainer.save_checkpoint
-#                 # instead of us having to do it here manually
-#                 trainer.training_type_plugin.rpc_save_model(trainer, self._do_save, filepath)
-#             else:
-#                 self._do_save(trainer, filepath)
-#         except:
-#             self._do_save(trainer, filepath)
-
-#         # call s3 function here to upload file to s3 using filepath
-#         # self.clearml_task.upload_file(filepath,'https://ecs.dsta.ai/bert_finetune_lm/artifact/saved_model.ckpt')
-
-#         # folder = 'uncased' if self.use_uncased else 'cased'
-
-#         print('uploading model checkpoint to S3...')
-#         s3_utils = S3Utils(aip_cfg.s3.bucket,aip_cfg.s3.model_artifact_path)
-
-
-#         s3_utils.s3_upload_file(filepath,os.path.join(S3_PATH,self.latest_model_name))
-
-#         best_model_path = self.best_model_path
-#         print("\nBEST MODEL PATH: ", best_model_path, "\n")
-
-
-#         print('uploading best model checkpoint to S3...')
-
-#         s3_utils.s3_upload_file(best_model_path,os.path.join(S3_PATH,self.best_model_name))
