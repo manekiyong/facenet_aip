@@ -1,20 +1,5 @@
-
-# import pytorch_lightning as pl
-# from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
-# from pytorch_lightning.loggers import TensorBoardLogger
-# from aiplatform.s3utility import S3Callback, S3Utils
-# from aiplatform.config import cfg as aip_cfg
-# from .model import  
-# from . import transforms
-# from .config import cfg
-# from .dataset import FlightDataset
-
-
-# from facenet_pytorch import MTCNN, InceptionResnetV1, fixed_image_standardization, training
 from model.inception_resnet_v1 import InceptionResnetV1
-from model.mtcnn import MTCNN, fixed_image_standardization
-from model.utils import training
-from data.preprocessor import PreProcessor
+from model.mtcnn import MTCNN
 
 import torch
 import numpy as np

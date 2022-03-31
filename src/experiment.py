@@ -33,7 +33,8 @@ class Experiment(object):
 
    # should init as arguments here
     def __init__(self, args):
-        self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train')
+        if args.clearml:
+            self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train')
         # print("Init successful")
         self.args = args
         self.data_dir = os.path.join(args.data_dir, '')       # data_dir = 'exp4/train'
@@ -183,6 +184,12 @@ class Experiment(object):
             "--model_path",
             default='model.pt',
             help="Path & Model Name"
+        )
+        parser.add_argument(
+            "-c",
+            "--clearml",
+            action="store_false",
+            help="Connect to ClearML"
         )
 
         return parser
