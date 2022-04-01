@@ -55,7 +55,7 @@ if __name__ == '__main__':
             'Args/model_path': params['model_path']
             }
     )
-    pipe.add_step(name='evaluate_1',
+    pipe.add_step(name='evaluate',
         parents=['generate_embedding', ],
         base_task_project=PROJECT_NAME,
         base_task_name='pl_evaluate',
@@ -65,35 +65,9 @@ if __name__ == '__main__':
             'Args/emb': params['emb_dir'],
             'Args/label': params['label_path'],
             'Args/model_path': params['model_path'],
-            'Args/topk': 1
-            }
+        }
     )
-    pipe.add_step(name='evaluate_3',
-        parents=['generate_embedding', ],
-        base_task_project=PROJECT_NAME,
-        base_task_name='pl_evaluate',
-        parameter_override={
-            'Args/clearml': True,
-            'Args/input': params['eval_dir'],
-            'Args/emb': params['emb_dir'],
-            'Args/label': params['label_path'],
-            'Args/model_path': params['model_path'],
-            'Args/topk': 3
-            }
-    )
-    pipe.add_step(name='evaluate_5',
-        parents=['generate_embedding', ],
-        base_task_project=PROJECT_NAME,
-        base_task_name='pl_evaluate',
-        parameter_override={
-            'Args/clearml': True,
-            'Args/input': params['eval_dir'],
-            'Args/emb': params['emb_dir'],
-            'Args/label': params['label_path'],
-            'Args/model_path': params['model_path'],
-            'Args/topk': 5
-            }
-    )
+
     
     pipe.set_default_execution_queue('default')
 

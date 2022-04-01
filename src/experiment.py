@@ -33,7 +33,8 @@ class Experiment(object):
 
    # should init as arguments here
     def __init__(self, args):
-        if args.clearml:
+        self.clearml = args.clearml
+        if self.clearml:
             self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train')
         # print("Init successful")
         self.args = args
@@ -49,7 +50,7 @@ class Experiment(object):
         # self.clearml_task.execute_remotely()
         # print("Execute remote successful")
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        if self.clearml_task is not None:
+        if self.clearml:
             logger = self.clearml_task.get_logger()
         
         print('Running on device: {}'.format(device))
@@ -139,7 +140,7 @@ class Experiment(object):
                 batch_metrics=metrics, show_running=True, device=device,
                 writer=writer
             )
-            if self.clearml_task is not None:
+            if self.clearml:
                 logger.report_scalar("acc (by epoch)", "train", iteration=epoch, value=train_metric['acc'].item())
                 logger.report_scalar("acc (by epoch)", "eval", iteration=epoch, value=val_metric['acc'].item())
                 logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=train_loss.item())
