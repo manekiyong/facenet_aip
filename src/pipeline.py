@@ -1,23 +1,22 @@
 from clearml import Task
 from clearml.automation import PipelineController
-import argparse
-import experiment
 
 PROJECT_NAME = 'facenet'
 PIPELINE_NAME = 'Experiment_0'
 
 params = {
-    'data_dir':'data/exp1/train',   # stage 1, 2
+    'triplet':True,                 # stage 1t
+    'data_dir':'data/exp6/train',   # stage 1, 2
     'batch_size':32,                # stage 1
-    'epochs':20,                    # stage 1
+    'epochs':10,                    # stage 1
+    'learn_rate':1e-3,              # stage 1t
+    'margin':0.05,                  # stage 1t
     'freeze_layers':15,             # stage 1
-    'model_path':'pl.pt',           # stage 1, 2, 3
-    'emb_dir':'data/exp1/emb',      # stage 2, 3
-    'eval_dir':'data/exp1/test',    # stage 3
-    'label_path':'data/exp1/label.json',    #stage 3
-    'topk':1                        # stage 3
+    'model_path':'tlb32e10m0.05.pt',           # stage 1, 2, 3
+    'emb_dir':'data/exp6/emb',      # stage 2, 3
+    'eval_dir':'data/exp6/test',    # stage 3
+    'label_path':'data/exp6/label.json',    #stage 3
 }
-
 
 
 if __name__ == '__main__':
@@ -33,18 +32,35 @@ if __name__ == '__main__':
         add_pipeline_tags=False,
     )
     print("Pipe created")
-    pipe.add_step(name='train_model',
-        base_task_project=PROJECT_NAME,
-        base_task_name='pl_train',
-        parameter_override={
-            'Args/clearml': True,
-            'Args/batch_size': params['batch_size'],
-            'Args/data_dir': params['data_dir'],
-            'Args/epochs': params['epochs'],
-            'Args/freeze_layers': params['freeze_layers'],
-            'Args/model_path': params['model_path']
-            }
-    )
+    if params['triplet']:
+        #Add triplet step
+        pipe.add_step(name='train_model',
+            base_task_project=PROJECT_NAME,
+            base_task_name='pl_train_triplet',
+            parameter_override={
+                'Args/clearml': True,
+                'Args/batch_size': params['batch_size'],
+                'Args/data_dir': params['data_dir'],
+                'Args/epochs': params['epochs'],
+                'Args/freeze_layers': params['freeze_layers'],
+                'Args/model_path': params['model_path'],
+                'Args/margin': params['margin'],
+                'Args/learn_rate': params['learn_rate']
+                }
+        )
+    else:
+        pipe.add_step(name='train_model',
+            base_task_project=PROJECT_NAME,
+            base_task_name='pl_train',
+            parameter_override={
+                'Args/clearml': True,
+                'Args/batch_size': params['batch_size'],
+                'Args/data_dir': params['data_dir'],
+                'Args/epochs': params['epochs'],
+                'Args/freeze_layers': params['freeze_layers'],
+                'Args/model_path': params['model_path']
+                }
+        )
     pipe.add_step(name='generate_embedding',
         parents=['train_model', ],
         base_task_project=PROJECT_NAME,
@@ -60,7 +76,7 @@ if __name__ == '__main__':
         base_task_project=PROJECT_NAME,
         base_task_name='pl_evaluate',
         parameter_override={
-            'Args/clearml': True,
+            'Args/use_clearml': True,
             'Args/input': params['eval_dir'],
             'Args/emb': params['emb_dir'],
             'Args/label': params['label_path'],

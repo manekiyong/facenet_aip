@@ -8,7 +8,7 @@ import json
 import argparse
 from pathlib import Path
 from PIL import Image
-from clearml import Task
+from clearml import Task, Logger
 
 
 PROJECT_NAME = 'facenet'
@@ -22,9 +22,10 @@ class Evaluate(object):
 
    # should init as arguments here
     def __init__(self, args):
-        self.clearml = args.clearml
-        if self.clearml:
+        self.use_clearml = args.use_clearml
+        if self.use_clearml:
             self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_evaluate')
+            self.logger = Logger.current_logger()
         self.input = os.path.join(args.input, '')
         self.emb = os.path.join(args.emb, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
@@ -76,26 +77,20 @@ class Evaluate(object):
 
     def evaluate(self):
         embeddings, ids = self.load_emb(self.emb, norm=True, transpose=True)
-        k = [1,2,3]
-        if self.clearml:
+        k = [1,3,5]
+        if self.use_clearml:
             logger = self.clearml_task.get_logger()
         ids = np.array(ids)   
-
-        ############
-        logger.report_text("meow ")   
-        for i in range(100):
-            logger.report_scalar(
-                "unified graph", "series A", iteration=i, value=1./(i+1)
-            )
-        ############
-
 
         # Create empty list to store results 
         result_dict = {}
         for i in k: 
             result_dict[i] = []
-
+        print("attempt 1", self.clearml_task, logger)
+        count = 101
         for i in os.listdir(self.input):
+            logger.report_scalar("unified graph", "series A", iteration=count, value=1./(count+1))
+            count+=1
             img_label = int(self.golden[i])
             # print(i, img_label)
             result_index_list, conf_list = self.predict_id(self.input+'/'+i, embeddings, k=k)
@@ -106,16 +101,29 @@ class Evaluate(object):
                     result_dict[j].append(True)
                 else:
                     result_dict[j].append(False)
-
-        for i in k:
-            correct = sum(1 if x else 0 for x in result_dict[i]) 
-            acc = round(correct*100/len(result_dict[i]),3)
-            print("k=",i, ":", correct, "out of " ,len(result_dict[i]), "\tAccuracy:", acc)
-            if self.clearml:
+            # logger.report_text("meow again")   
+        ############
+        self.clearml_task.flush()
+        logger.report_text("meow ???")   
+        for i in range(100):
+            logger.report_scalar("another graph", "series C", iteration=i, value=1./(i+1))
+        ############
+        print("attempt 2", self.clearml_task, logger)
+        for a in k:
+            correct = sum(1 if x else 0 for x in result_dict[a]) 
+            acc = round(correct*100/len(result_dict[a]),3)
+            print("k=",a, ":", correct, "out of " ,len(result_dict[a]), "\tAccuracy:", acc)
+            if self.use_clearml:
                 print("Uploading")
                 logger.report_text("meow ")
-                logger.report_scalar("accuracy", 'temp', iteration=i, value=acc)  
+                logger.report_scalar(
+                    "accuracy", 'temp', iteration=a, value=acc
+                )
+                logger.report_scalar("accuracy", 'temp', iteration=i, value=acc)
+        self.clearml_task.flush()
 
+        
+    
 
     @staticmethod
     def add_eval_args():
@@ -146,7 +154,7 @@ class Evaluate(object):
         )
         parser.add_argument(
             "-c",
-            "--clearml",
+            "--use_clearml",
             action="store_true",
             help="Connect to ClearML"
         )
