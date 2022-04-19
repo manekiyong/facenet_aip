@@ -86,11 +86,7 @@ class Evaluate(object):
         result_dict = {}
         for i in k: 
             result_dict[i] = []
-        print("attempt 1", self.clearml_task, logger)
-        count = 101
         for i in os.listdir(self.input):
-            logger.report_scalar("unified graph", "series A", iteration=count, value=1./(count+1))
-            count+=1
             img_label = int(self.golden[i])
             # print(i, img_label)
             result_index_list, conf_list = self.predict_id(self.input+'/'+i, embeddings, k=k)
@@ -101,28 +97,17 @@ class Evaluate(object):
                     result_dict[j].append(True)
                 else:
                     result_dict[j].append(False)
-            # logger.report_text("meow again")   
-        ############
-        self.clearml_task.flush()
-        logger.report_text("meow ???")   
-        for i in range(100):
-            logger.report_scalar("another graph", "series C", iteration=i, value=1./(i+1))
-        ############
-        print("attempt 2", self.clearml_task, logger)
+
         for a in k:
             correct = sum(1 if x else 0 for x in result_dict[a]) 
             acc = round(correct*100/len(result_dict[a]),3)
             print("k=",a, ":", correct, "out of " ,len(result_dict[a]), "\tAccuracy:", acc)
             if self.use_clearml:
                 print("Uploading")
-                logger.report_text("meow ")
                 logger.report_scalar(
                     "accuracy", 'temp', iteration=a, value=acc
                 )
-                logger.report_scalar("accuracy", 'temp', iteration=i, value=acc)
-        self.clearml_task.flush()
 
-        
     
 
     @staticmethod

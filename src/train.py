@@ -61,7 +61,7 @@ class Experiment(object):
         )
         # Use MTCNN to preprocess & crop images
         preprocess = PreProcessor(mtcnn, self.args)
-        dataset = preprocess.crop_img(training.collate_pil)
+        dataset = preprocess.crop_img()
 
         # Init Resnet model
         resnet = InceptionResnetV1(

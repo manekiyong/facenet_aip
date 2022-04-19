@@ -2,7 +2,10 @@ src/data/exp*
 src/data/img/*
 src/runs/
 *.pt
-
+**/LFW_utils/**/*.jpg
+**/LFW_utils/**/*.png
+**/LFW_utils/logs/**/*.txt
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
