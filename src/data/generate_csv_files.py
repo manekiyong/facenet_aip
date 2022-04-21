@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 
 
-def generate_csv_file(dataroot, csv_name="glint360k.csv"):
+def generate_csv_file(dataroot):
     """Generates a csv file containing the image paths of the glint360k dataset for use in triplet selection in
     triplet loss training.
 
@@ -46,8 +46,10 @@ def generate_csv_file(dataroot, csv_name="glint360k.csv"):
 
     # Encode names as categorical classes
     dataframe['class'] = pd.factorize(dataframe['name'])[0]
-    dataframe.to_csv(path_or_buf=csv_name, index=False)
+    
 
     elapsed_time = time.time()-start_time
     print("\nDone! Elapsed time: {:.2f} minutes.".format(elapsed_time/60))
+    # dataframe.to_csv(path_or_buf=csv_name, index=False)
+    return dataframe
 

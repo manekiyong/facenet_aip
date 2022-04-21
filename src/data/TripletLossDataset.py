@@ -17,7 +17,7 @@ from torch.utils.data import Dataset
 
 
 class TripletFaceDataset(Dataset):
-    def __init__(self, root_dir, training_dataset_csv_path, num_triplets, epoch, num_human_identities_per_batch=32,
+    def __init__(self, root_dir, training_dataset_df, num_triplets, epoch, num_human_identities_per_batch=32,
                  triplet_batch_size=544, training_triplets_path=None, output_triplets_path=None, transform=None):
         """
         Args:
@@ -39,7 +39,8 @@ class TripletFaceDataset(Dataset):
         # Modified here to set the data types of the dataframe columns to be suitable for other datasets other than the
         #  VggFace2 dataset (Casia-WebFace in this case because of the identities starting with numbers automatically
         #  forcing the 'name' column as being of type 'int' instead of type 'object')
-        self.df = pd.read_csv(training_dataset_csv_path, dtype={'id': object, 'name': object, 'class': int})
+        # self.df = pd.read_csv(training_dataset_csv_path, dtype={'id': object, 'name': object, 'class': int})
+        self.df = training_dataset_df
         self.root_dir = root_dir
         self.num_triplets = num_triplets
         self.num_human_identities_per_batch = num_human_identities_per_batch

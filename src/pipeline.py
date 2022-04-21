@@ -20,6 +20,8 @@ params = {
     'emb_dir':'data/exp6/emb',                                 # stage 2, 3
     'eval_dir':'data/exp6/test',                               # stage 3
     'label_path':'data/exp6/label.json',                       #stage 3
+    's3':True,
+    's3_dataset_name':'vggface_exp10'
 }
 
 

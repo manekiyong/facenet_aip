@@ -22,9 +22,10 @@ from torch import optim
 from torch.optim.lr_scheduler import MultiStepLR
 from torchvision import transforms
 import numpy as np
+import pandas as pd
 import os
 import argparse
-from clearml import Task
+from clearml import Task, Dataset
 from pathlib import Path
 import random
 
@@ -40,6 +41,7 @@ from torch.nn.modules.distance import PairwiseDistance
 from tqdm import tqdm
 
 PROJECT_NAME = 'facenet'
+OUTPUT_URL = 's3://experiment-logging/'
 
 
 class Experiment(object):
@@ -48,33 +50,66 @@ class Experiment(object):
     def __init__(self, args):
         self.clearml = args.clearml
         if self.clearml:
-            self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
+            # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
+            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
+            self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04")
         # print("Init successful")
+        self.s3 = args.s3
         self.args = args
         self.data_dir = os.path.join(args.data_dir, '')       # data_dir = 'exp10/train'
-        self.csv = args.id_csv              # exp10/exp10.csv
         self.batch_size = args.batch_size   # batch_size = 256
         self.epochs = args.epochs           # epochs = 20
-        self.model_path = args.model_path   # path to export model to exp10/model.pt
+ 
         self.workers = 0 if os.name == 'nt' else 8
         self.learn_rate = args.learn_rate   
         self.frozen = args.freeze_layers    # 14
         self.margin = args.margin           # 0.2
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.image_size = args.im_size      # 140
-
+        self.model_path = args.model_path   # path to export model to exp10/model.pt
         self.output_triplets_path = os.path.join(args.output_triplets_path, '')
         Path(self.output_triplets_path).mkdir(parents=True, exist_ok=True)
-        self.lfw_dataroot = os.path.join(args.lfw_dataroot, '')
-        self.lfw_pairs = args.lfw_pairs
+
         self.lfw_batch_size = args.lfw_batch_size
-        self.log_path = os.path.join(args.log_path, '')
-        Path(self.log_path).mkdir(parents=True, exist_ok=True)
-        self.plot_path = os.path.join(args.plot_path, '')
-        Path(self.plot_path).mkdir(parents=True, exist_ok=True)
         self.iterations_per_epoch = args.iterations_per_epoch       # 5000
         self.num_human_id_per_batch=args.num_human_id_per_batch     # 32
 
+        if self.s3:
+            self.clearml_task.execute_remotely(queue_name="compute")
+            # Train Dataset
+            dataset_name = args.s3_dataset_name
+            dataset_project = "datasets/facenet"
+            dataset_path = Dataset.get(
+                dataset_name=dataset_name, 
+                dataset_project=dataset_project
+            ).get_local_copy()
+            dataset_path = os.path.join(dataset_path, '')
+            self.data_dir=dataset_path+self.data_dir
+
+            # LFW Dataset
+            lfw_name = args.s3_lfw_name
+            lfw_path = Dataset.get(
+                dataset_name=lfw_name, 
+                dataset_project=dataset_project
+            ).get_local_copy()
+            lfw_path = os.path.join(lfw_path, '')
+            self.lfw_pairs = lfw_path+args.lfw_pairs
+            self.lfw_dataroot = lfw_path+os.path.join(args.lfw_dataroot, '')
+            self.output_path = Dataset.create(dataset_name=args.exp_name+'_models', dataset_project = 'datasets/facenet')
+            
+            
+        else:
+
+            # LFW Dataset
+            self.lfw_dataroot = os.path.join(args.lfw_dataroot, '')
+            self.lfw_pairs = args.lfw_pairs
+            # self.log_path = os.path.join(args.log_path, '')
+            # Path(self.log_path).mkdir(parents=True, exist_ok=True)
+            # self.plot_path = os.path.join(args.plot_path, '')
+            # Path(self.plot_path).mkdir(parents=True, exist_ok=True)
+            # Exports
+
+        print(self.data_dir)
 
         print("Done Init")
 
@@ -146,38 +181,38 @@ class Experiment(object):
                         np.mean(far)
                     )
             )
-            with open(self.log_path+'lfw_log_triplet.txt', 'a') as f:
-                val_list = [
-                    epoch,
-                    np.mean(accuracy),
-                    np.std(accuracy),
-                    np.mean(precision),
-                    np.std(precision),
-                    np.mean(recall),
-                    np.std(recall),
-                    roc_auc,
-                    np.mean(best_distances),
-                    np.std(best_distances),
-                    np.mean(tar)
-                ]
-                log = '\t'.join(str(value) for value in val_list)
-                f.writelines(log + '\n')
+            # with open(self.log_path+'lfw_log_triplet.txt', 'a') as f:
+            #     val_list = [
+            #         epoch,
+            #         np.mean(accuracy),
+            #         np.std(accuracy),
+            #         np.mean(precision),
+            #         np.std(precision),
+            #         np.mean(recall),
+            #         np.std(recall),
+            #         roc_auc,
+            #         np.mean(best_distances),
+            #         np.std(best_distances),
+            #         np.mean(tar)
+            #     ]
+            #     log = '\t'.join(str(value) for value in val_list)
+            #     f.writelines(log + '\n')
 
-        try:
-            # Plot ROC curve
-            plot_roc_lfw(
-                false_positive_rate=false_positive_rate,
-                true_positive_rate=true_positive_rate,
-                figure_name=self.plot_path+"roc_plots/roc_epoch_{}_triplet.png".format(epoch)
-            )
-            # Plot LFW accuracies plot
-            plot_accuracy_lfw(
-                log_file=self.log_path+"lfw_log_triplet.txt",
-                epochs=epoch,
-                figure_name=self.plot_path+"accuracies_plots/lfw_accuracies_epoch_{}_triplet.png".format(epoch)
-            )
-        except Exception as e:
-            print(e)
+        # try:
+        #     # Plot ROC curve
+        #     plot_roc_lfw(
+        #         false_positive_rate=false_positive_rate,
+        #         true_positive_rate=true_positive_rate,
+        #         figure_name=self.plot_path+"roc_plots/roc_epoch_{}_triplet.png".format(epoch)
+        #     )
+        #     # Plot LFW accuracies plot
+        #     plot_accuracy_lfw(
+        #         log_file=self.log_path+"lfw_log_triplet.txt",
+        #         epochs=epoch,
+        #         figure_name=self.plot_path+"accuracies_plots/lfw_accuracies_epoch_{}_triplet.png".format(epoch)
+        #     )
+        # except Exception as e:
+        #     print(e)
 
         return best_distances, accuracy, precision, recall, roc_auc
 
@@ -210,8 +245,8 @@ class Experiment(object):
         preprocess = PreProcessor(mtcnn, self.args)
         dataset = preprocess.crop_img()
 
-        generate_csv_file(self.data_dir[:-1]+ '_cropped', self.csv)
-
+        df = generate_csv_file(self.data_dir[:-1]+ '_cropped')
+        # df.to_csv(path_or_buf=csv_name, index=False)
         # Init Resnet model
         resnet = InceptionResnetV1(
             classify=False,
@@ -267,7 +302,7 @@ class Experiment(object):
             train_dataloader = DataLoader(
                 dataset=TripletFaceDataset(
                     root_dir=self.data_dir[:-1]+'_cropped',
-                    training_dataset_csv_path=self.csv,
+                    training_dataset_df=df,
                     num_triplets=self.iterations_per_epoch * self.batch_size,
                     num_human_identities_per_batch=self.num_human_id_per_batch,
                     triplet_batch_size=self.batch_size,
@@ -324,15 +359,16 @@ class Experiment(object):
             if epoch_loss < min_loss:
                 min_loss = epoch_loss
                 torch.save(resnet.state_dict(), self.model_path[:-3]+'_epoch_{}.pt'.format(epoch))
+                print(os.listdir())
             if self.clearml:
                 logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=epoch_loss.item())                
-            with open(self.log_path+'log_triplet.txt', 'a') as f:
-                val_list = [
-                    epoch,
-                    num_valid_training_triplets
-                ]
-                log = '\t'.join(str(value) for value in val_list)
-                f.writelines(log + '\n')    
+            # with open(self.log_path+'log_triplet.txt', 'a') as f:
+            #     val_list = [
+            #         epoch,
+            #         num_valid_training_triplets
+            #     ]
+            #     log = '\t'.join(str(value) for value in val_list)
+            #     f.writelines(log + '\n')    
                 
             best_distances, accuracy, precision, recall, roc_auc = self.validate_lfw(
                 model=resnet,
@@ -346,23 +382,28 @@ class Experiment(object):
                 logger.report_scalar("LFW ROC", "A", iteration=epoch, value=roc_auc)      
 
         torch.save(resnet.state_dict(), self.model_path)
+        if self.s3:
+            self.output_path.add_files('.')
+            self.output_path.upload(output_url='s3://experiment-logging/')
+            self.output_path.finalize()
+            self.output_path.publish()
+
 
     @staticmethod
     def add_experiment_args():
 
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--exp_name",
+            default='experiment',
+            help="Experiment Name"
+        )
         # Train Dataset Args
         parser.add_argument(
             "-d",
             "--data_dir",
             default='data/train',
             help="Training Dataset Folder Path"
-        )
-        parser.add_argument(
-            "-i",
-            "--id_csv",
-            default='id.csv',
-            help=".csv file for identity"
         )
         #  Model Param Args
         parser.add_argument(
@@ -462,7 +503,23 @@ class Experiment(object):
             "--clearml",
             action="store_false",
             help="Connect to ClearML"
+        )        
+        parser.add_argument(
+            "-s",
+            "--s3",
+            action="store_false",
+            help="Call to use s3"
         )
+        parser.add_argument(
+            "--s3_dataset_name",
+            default='vggface_exp10',
+            help="ClearML Dataset Name"
+        )
+        parser.add_argument(
+            "--s3_lfw_name",
+            default='lfw_eval',
+            help="LFW Eval Dataset Name"
+        )              
 
 
         return parser
