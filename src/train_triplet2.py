@@ -255,11 +255,12 @@ class Experiment(object):
             logger.report_scalar("LFW recall", "A", iteration=-1, value=np.mean(recall))
             logger.report_scalar("LFW ROC", "A", iteration=-1, value=roc_auc)                  
 
+        min_loss = 99
         for epoch in range(self.epochs):
             num_valid_training_triplets = 0
             l2_distance = PairwiseDistance(p=2)
             _training_triplets_path = None
-            cum_loss = torch.zeros(1)
+            epoch_loss = torch.zeros(1)
             print('\nEpoch {}/{}'.format(epoch + 1, self.epochs))
             print('-' * 10)
             # Train Dataloader is reloaded every epoch
@@ -305,7 +306,7 @@ class Experiment(object):
                 pos_valid_embeddings = pos_embeddings[valid_triplets]
                 neg_valid_embeddings = neg_embeddings[valid_triplets]
                 
-                cur_loss = TripletLoss(margin=self.margin).forward(
+                batch_loss = TripletLoss(margin=self.margin).forward(
                     anchor=anc_valid_embeddings,
                     positive=pos_valid_embeddings,
                     negative=neg_valid_embeddings
@@ -313,14 +314,18 @@ class Experiment(object):
                 
                 num_valid_training_triplets += len(anc_valid_embeddings)
                 optimizer.zero_grad()
-                cur_loss.backward()
-                batch_loss = batch_loss+cur_loss.to('cpu')
+                batch_loss.backward()
+                epoch_loss = epoch_loss+batch_loss.to('cpu')
                 optimizer.step()
-            
+            scheduler.step()
             print('Epoch {}:\tNumber of valid training triplets in epoch: {}'.format(epoch,num_valid_training_triplets))
-            cum_loss = cum_loss+batch_loss
+            epoch_loss = epoch_loss/len(train_dataloader)
+
+            if epoch_loss < min_loss:
+                min_loss = epoch_loss
+                torch.save(resnet.state_dict(), self.model_path[:-3]+'_epoch_{}.pt'.format(epoch))
             if self.clearml:
-                logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=cum_loss.item())                
+                logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=epoch_loss.item())                
             with open(self.log_path+'log_triplet.txt', 'a') as f:
                 val_list = [
                     epoch,

@@ -1,5 +1,6 @@
 from model.inception_resnet_v1 import InceptionResnetV1
 from model.mtcnn import MTCNN
+from torch.nn.modules.distance import PairwiseDistance
 
 import torch
 import numpy as np
@@ -56,7 +57,9 @@ class Evaluate(object):
 
 
     def predict_id(self, img_path, emb_list, k=[1,3,5]):
-        temp_sim = []
+        l2_distance = PairwiseDistance(p=2)
+        temp_sim_cos = []
+        temp_sim_euc = []
         img = Image.open(img_path)
         img_cropped, prob = self.mtcnn(img, return_prob=True)
         if prob[0] != None:
@@ -64,48 +67,79 @@ class Evaluate(object):
             img_embedding = self.resnet(img_cropped)
             img_embedding = img_embedding[max_val]
         else:
-            return [[-1]]*len(k), [[-1]]*len(k)
-        temp_sim = torch.matmul(img_embedding, emb_list)
-        indices_list = []
-        values_list = []
-        for i in k:
-            topk = torch.topk(temp_sim, i)
-            indices_list.append(topk.indices.tolist())
-            values_list.append(topk.values.tolist())
-        return indices_list, values_list
+            return [[-1]]*len(k), [[-1]]*len(k), [[-1]]*len(k), [[-1]]*len(k)
+        
+        # Compute Cosine Similarity (By Matrix Multiplication)
+        temp_sim_cos = torch.matmul(img_embedding, emb_list)
+        # Compute L2 Dist Similarity
+        t_embedding_list = torch.transpose(emb_list, 0, 1)
+        for j in t_embedding_list:
+            dist = l2_distance(img_embedding, j).item()
+            temp_sim_euc.append(dist)
+        temp_sim_euc=np.array(temp_sim_euc)
+        # temp_sim_euc=torch.from_numpy(temp_sim_euc)
 
+        indices_list_cos = []
+        values_list_cos = []
+        indices_list_euc = []
+        values_list_euc = []   
+        for i in k:
+            topk_cos = torch.topk(temp_sim_cos, i)
+            topk_euc = np.argpartition(temp_sim_euc, i)[:i]
+            topk_euc_conf = temp_sim_euc[topk_euc]
+            if set(topk_cos.indices.tolist()) != set(topk_euc):
+                print(topk_cos)
+                print(topk_euc)
+            indices_list_cos.append(topk_cos.indices.tolist())
+            values_list_cos.append(topk_cos.values.tolist())
+            indices_list_euc.append(topk_euc)
+            values_list_euc.append(topk_euc_conf)
+        
+        return indices_list_cos, values_list_cos, indices_list_euc, values_list_euc
 
     def evaluate(self):
         embeddings, ids = self.load_emb(self.emb, norm=True, transpose=True)
         k = [1,3,5]
-        if self.use_clearml:
-            logger = self.clearml_task.get_logger()
         ids = np.array(ids)   
 
         # Create empty list to store results 
-        result_dict = {}
+        result_dict_cos = {}
+        result_dict_euc = {}
+
         for i in k: 
-            result_dict[i] = []
+            result_dict_cos[i] = []
+            result_dict_euc[i] = []
+
         for i in os.listdir(self.input):
             img_label = int(self.golden[i])
-            # print(i, img_label)
-            result_index_list, conf_list = self.predict_id(self.input+'/'+i, embeddings, k=k)
+            result_index_list_cos,_, result_index_list_euc,_ = self.predict_id(self.input+'/'+i, embeddings, k=k)
             for index, j in enumerate(k):
-                result = ids[result_index_list[index]]
-                # print("Ground Truth:", img_label, "\tPrediction:", result, "\tConfidence:", conf_list[index])
-                if img_label in result:
-                    result_dict[j].append(True)
+                result_cos = ids[result_index_list_cos[index]]
+                result_euc = ids[result_index_list_euc[index]]
+                # Append cos result
+                if img_label in result_cos:
+                    result_dict_cos[j].append(True)
                 else:
-                    result_dict[j].append(False)
-
+                    result_dict_cos[j].append(False)
+                # Append euc result
+                if img_label in result_euc:
+                    result_dict_euc[j].append(True)
+                else:
+                    result_dict_euc[j].append(False)
         for a in k:
-            correct = sum(1 if x else 0 for x in result_dict[a]) 
-            acc = round(correct*100/len(result_dict[a]),3)
-            print("k=",a, ":", correct, "out of " ,len(result_dict[a]), "\tAccuracy:", acc)
+            correct_cos = sum(1 if x else 0 for x in result_dict_cos[a]) 
+            acc_cos = round(correct_cos*100/len(result_dict_cos[a]),3)
+            correct_euc = sum(1 if x else 0 for x in result_dict_euc[a]) 
+            acc_euc = round(correct_euc*100/len(result_dict_euc[a]),3)
+            print("k=",a, ":", correct_cos, "out of " ,len(result_dict_cos[a]), "\tAccuracy:", acc_cos)
+            print("k=",a, ":", correct_euc, "out of " ,len(result_dict_euc[a]), "\tAccuracy:", acc_euc)
             if self.use_clearml:
                 print("Uploading")
-                logger.report_scalar(
-                    "accuracy", 'temp', iteration=a, value=acc
+                self.logger.report_scalar(
+                    "accuracy", 'cos', iteration=a, value=acc_cos
+                )
+                self.logger.report_scalar(
+                    "accuracy", 'euc', iteration=a, value=acc_euc
                 )
 
     

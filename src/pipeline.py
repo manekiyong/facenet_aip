@@ -2,21 +2,21 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'tamer_test_1000id'
+PIPELINE_NAME = 'tamer_256_20_1e3_0.2_15_5000_64'
 
 params = {
     'triplet':True,                                             # stage 1t
     'data_dir':'data/exp6/train',                              # stage 1, 2
     'id_csv': 'data/exp6/exp6.csv',                           # stage 1t
     'batch_size':256,                                           # stage 1
-    'epochs':10,                                                # stage 1
+    'epochs':20,                                                # stage 1
     'learn_rate':1e-3,                                          # stage 1t
     'margin':0.2,                                               # stage 1t
     'freeze_layers':15,                                         # stage 1
-    'model_path':'tamer_test_1000id.pt',                               # stage 1, 2, 3
-    'iterations_per_epoch': 2000,                               # stage 1t
-    'num_human_id_per_batch': 32,                               # stage 1t
+    'iterations_per_epoch': 5000,                               # stage 1t
+    'num_human_id_per_batch': 64,                               # stage 1t
     'output_triplets_path': 'data/exp6/generated_triplets/',   # stage 1t
+    'model_path':'data/exp6/tamer_256_20_1e3_0.2_15_5000_64.pt',  # stage 1, 2, 3
     'emb_dir':'data/exp6/emb',                                 # stage 2, 3
     'eval_dir':'data/exp6/test',                               # stage 3
     'label_path':'data/exp6/label.json',                       #stage 3
