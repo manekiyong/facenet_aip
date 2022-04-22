@@ -60,7 +60,7 @@ class Experiment(object):
         self.batch_size = args.batch_size   # batch_size = 256
         self.epochs = args.epochs           # epochs = 20
  
-        self.workers = 0 if os.name == 'nt' else 2
+        self.workers = 0 if os.name == 'nt' else 4
         self.learn_rate = args.learn_rate   
         self.frozen = args.freeze_layers    # 14
         self.margin = args.margin           # 0.2
@@ -369,7 +369,8 @@ class Experiment(object):
             if epoch_loss < min_loss:
                 min_loss = epoch_loss
                 torch.save(resnet.state_dict(), self.model_path[:-3]+'_epoch_{}.pt'.format(epoch))
-                print(os.listdir())
+                if self.s3:
+                    self.output_path.add_files(self.model_path[:-3]+'_epoch_{}.pt'.format(epoch))
             if self.clearml:
                 logger.report_scalar("loss (by epoch)", "train", iteration=epoch, value=epoch_loss.item())                
             # with open(self.log_path+'log_triplet.txt', 'a') as f:
@@ -393,7 +394,7 @@ class Experiment(object):
 
         torch.save(resnet.state_dict(), self.model_path)
         if self.s3:
-            self.output_path.add_files('.')
+            self.output_path.add_files(self.model_path)
             self.output_path.upload(output_url='s3://experiment-logging/')
             self.output_path.finalize()
             self.output_path.publish()

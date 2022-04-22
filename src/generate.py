@@ -7,7 +7,7 @@ import os
 import argparse
 from pathlib import Path
 from PIL import Image
-from clearml import Task
+from clearml import Task, Dataset
 
 
 PROJECT_NAME = 'facenet'
@@ -22,12 +22,39 @@ class Generate(object):
    # should init as arguments here
     def __init__(self, args):
         # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
+        self.s3 = args.s3
         self.input = os.path.join(args.input, '')
-        self.output = os.path.join(args.output, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
+        self.model_path = args.model_path
+        self.output = os.path.join(args.output, '')
+        if self.s3:
+            dataset_name = args.s3_dataset_name
+            dataset_project = "datasets/facenet"
+            # Get Training Dataset
+            s3_dataset_path = Dataset.get(
+                dataset_name=dataset_name, 
+                dataset_project=dataset_project
+            ).get_local_copy()
+            s3_dataset_path = os.path.join(s3_dataset_path, '')
+            self.input=s3_dataset_path+self.input
+            # Get Trained Model
+            s3_model_path = Dataset.get(
+                dataset_name=args.exp_name+'_models', 
+                dataset_project = 'datasets/facenet'
+            ).get_local_copy()
+            s3_model_path= os.path.join(s3_model_path, '')
+            self.model_path = s3_model_path+self.model_path
+            # Create Dataset for the generated embeddings
+            self.emb_dataset = Dataset.create(
+                dataset_name=args.exp_name+'_embeddings', 
+                dataset_project = 'datasets/facenet'
+            )
+
         self.resnet.load_state_dict(torch.load(args.model_path), strict=False)
         self.resnet.eval()
         self.mtcnn = MTCNN(image_size=160, margin=0, device='cuda', keep_all=True)
+
+        
 
 
     def generate_embedding(self, emb_id, img_folder='train/', emb_folder='emb/'):
@@ -51,6 +78,8 @@ class Generate(object):
 
         avg_emb=avg_emb.div(emb_count)
         torch.save(avg_emb, emb_folder+emb_id+'.pt')
+        if self.s3:
+            self.emb_dataset.add_files(emb_folder+emb_id+'.pt')
         print(emb_id, "Done")
         return
 
@@ -63,6 +92,10 @@ class Generate(object):
             self.generate_embedding(i, 
                         self.input,
                         emb_folder=self.output)
+        if self.s3:
+            self.emb_dataset.upload(output_url='s3://experiment-logging/')
+            self.emb_dataset.finalize()
+            self.emb_dataset.publish()
             
 
 
@@ -70,6 +103,11 @@ class Generate(object):
     @staticmethod
     def add_generate_args():
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--exp_name",
+            default='experiment',
+            help="Experiment Name"
+        )
         parser.add_argument(
             "-i",
             "--input",
@@ -87,6 +125,17 @@ class Generate(object):
             "--model_path",
             default='model.pt',
             help="Path & Model Name"
+        )
+        parser.add_argument(
+            "-s",
+            "--s3",
+            action="store_false",
+            help="Call to use s3"
+        )
+        parser.add_argument(
+            "--s3_dataset_name",
+            default='vggface_exp10',
+            help="ClearML Dataset Name"
         )
 
         return parser
