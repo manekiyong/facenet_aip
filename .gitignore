@@ -1,7 +1,7 @@
 src/data/exp*
 src/data/img/*
 src/runs/
-*.pt
+src/*.pt
 **/LFW_utils/**/*.jpg
 **/LFW_utils/**/*.png
 **/LFW_utils/logs/**/*.txt

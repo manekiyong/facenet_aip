@@ -19,5 +19,6 @@ ADD /src /src
 RUN mkdir /data
 RUN mkdir /models
 
+RUN pip install -r requirements.txt
 
 WORKDIR /src

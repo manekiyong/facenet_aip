@@ -199,7 +199,7 @@ class InceptionResnetV1(nn.Module):
             initialized. (default: {None})
         dropout_prob {float} -- Dropout probability. (default: {0.6})
     """
-    def __init__(self, pretrained=None, classify=False, num_classes=None, dropout_prob=0.6, device=None):
+    def __init__(self, pretrained=None, classify=False, num_classes=None, dropout_prob=0.6, device=None, s3_path=None):
         super().__init__()
 
         # Set simple attributes
@@ -259,7 +259,7 @@ class InceptionResnetV1(nn.Module):
 
         if pretrained is not None:
             self.logits = nn.Linear(512, tmp_classes)
-            load_weights(self, pretrained)
+            load_weights(self, pretrained, s3_path)
 
         if self.classify and self.num_classes is not None:
             self.logits = nn.Linear(512, self.num_classes)
@@ -302,7 +302,7 @@ class InceptionResnetV1(nn.Module):
         return x
 
 
-def load_weights(mdl, name):
+def load_weights(mdl, name, s3_path):
     """Download pretrained state_dict and load into model.
 
     Arguments:
@@ -312,23 +312,24 @@ def load_weights(mdl, name):
     Raises:
         ValueError: If 'pretrained' not equal to 'vggface2' or 'casia-webface'.
     """
-    if name == 'vggface2':
-        path = 'https://github.com/timesler/facenet-pytorch/releases/download/v2.2.9/20180402-114759-vggface2.pt'
-    elif name == 'casia-webface':
-        path = 'https://github.com/timesler/facenet-pytorch/releases/download/v2.2.9/20180408-102900-casia-webface.pt'
+    if s3_path is None:
+        if name == 'vggface2':
+            path = 'https://github.com/timesler/facenet-pytorch/releases/download/v2.2.9/20180402-114759-vggface2.pt'
+        elif name == 'casia-webface':
+            path = 'https://github.com/timesler/facenet-pytorch/releases/download/v2.2.9/20180408-102900-casia-webface.pt'
+        else:
+            raise ValueError('Pretrained models only exist for "vggface2" and "casia-webface"')
+
+        model_dir = os.path.join(get_torch_home(), 'checkpoints')
+        os.makedirs(model_dir, exist_ok=True)
+
+        cached_file = os.path.join(model_dir, os.path.basename(path))
+        if not os.path.exists(cached_file):
+            download_url_to_file(path, cached_file)
     else:
-        raise ValueError('Pretrained models only exist for "vggface2" and "casia-webface"')
-
-    model_dir = os.path.join(get_torch_home(), 'checkpoints')
-    os.makedirs(model_dir, exist_ok=True)
-
-    cached_file = os.path.join(model_dir, os.path.basename(path))
-    if not os.path.exists(cached_file):
-        download_url_to_file(path, cached_file)
-
+        cached_file = s3_path
     state_dict = torch.load(cached_file)
     mdl.load_state_dict(state_dict)
-
 
 def get_torch_home():
     torch_home = os.path.expanduser(

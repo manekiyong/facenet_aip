@@ -84,7 +84,12 @@ class Experiment(object):
                 dataset_project=dataset_project
             ).get_local_copy()
             dataset_path = os.path.join(dataset_path, '')
-            self.data_dir=dataset_path+self.data_dir
+            self.data_dir=os.path.join(dataset_path+self.data_dir, '')
+            pretrained_path = Dataset.get(
+                dataset_name='resnet_pretrained', 
+                dataset_project=dataset_project
+            ).get_local_copy()
+            self.pretrained_path = os.path.join(pretrained_path, '')+'20180402-114759-vggface2.pt'
 
             # LFW Dataset
             lfw_name = args.s3_lfw_name
@@ -109,7 +114,6 @@ class Experiment(object):
             # Path(self.plot_path).mkdir(parents=True, exist_ok=True)
             # Exports
 
-        print(self.data_dir)
 
         print("Done Init")
 
@@ -229,29 +233,35 @@ class Experiment(object):
         return anc_embeddings, pos_embeddings, neg_embeddings, model
 
     def run_experiment(self):
-        # self.clearml_task.execute_remotely()
-        # print("Execute remote successful")
-        
+
         if self.clearml:
             logger = self.clearml_task.get_logger()
         
         print('Running on device: {}'.format(self.device))
+        print("data dir is", self.data_dir)
         mtcnn = MTCNN(
             image_size=224, margin=0, min_face_size=20,
             thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True,
             device=self.device
         )
         # Use MTCNN to preprocess & crop images
-        preprocess = PreProcessor(mtcnn, self.args)
+        preprocess = PreProcessor(mtcnn, self.data_dir[:-1], self.batch_size)
         dataset = preprocess.crop_img()
-
+        # print(self.data_dir[:-1]+ '_cropped')
         df = generate_csv_file(self.data_dir[:-1]+ '_cropped')
         # df.to_csv(path_or_buf=csv_name, index=False)
         # Init Resnet model
-        resnet = InceptionResnetV1(
-            classify=False,
-            pretrained='vggface2'
-        ).to(self.device)
+        if self.s3:
+            resnet = InceptionResnetV1(
+                classify=False,
+                pretrained='vggface2',
+                s3_path=self.pretrained_path
+            ).to(self.device)
+        else:
+            resnet = InceptionResnetV1(
+                classify=False,
+                pretrained='vggface2'
+            ).to(self.device)
 
         # Freeze most layers
         count=0

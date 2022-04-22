@@ -11,9 +11,10 @@ def collate_pil(x):
 
 class PreProcessor():
 
-    def __init__(self, mtcnn, args):
-        self.data_dir = args.data_dir
-        self.batch_size = args.batch_size
+    def __init__(self, mtcnn, data_dir, batch_size):
+        self.data_dir = data_dir
+        print(self.data_dir)
+        self.batch_size = batch_size
         self.mtcnn = mtcnn
         self.workers = 0 if os.name == 'nt' else 8
 
