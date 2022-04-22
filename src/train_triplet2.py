@@ -60,7 +60,7 @@ class Experiment(object):
         self.batch_size = args.batch_size   # batch_size = 256
         self.epochs = args.epochs           # epochs = 20
  
-        self.workers = 0 if os.name == 'nt' else 8
+        self.workers = 0 if os.name == 'nt' else 2
         self.learn_rate = args.learn_rate   
         self.frozen = args.freeze_layers    # 14
         self.margin = args.margin           # 0.2
