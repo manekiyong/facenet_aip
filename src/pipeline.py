@@ -2,26 +2,29 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'tamer_256_20_1e3_0.2_15_5000_64'
+PIPELINE_NAME = 'dryrun'
 
 params = {
+    'exp_name':PIPELINE_NAME,
     'triplet':True,                                             # stage 1t
-    'data_dir':'data/exp6/train',                              # stage 1, 2
-    'id_csv': 'data/exp6/exp6.csv',                           # stage 1t
+    'data_dir':'train/',                              # stage 1, 2
     'batch_size':256,                                           # stage 1
-    'epochs':20,                                                # stage 1
+    'epochs':1,                                                # stage 1
     'learn_rate':1e-3,                                          # stage 1t
     'margin':0.2,                                               # stage 1t
     'freeze_layers':15,                                         # stage 1
-    'iterations_per_epoch': 5000,                               # stage 1t
+    'iterations_per_epoch': 1000,                               # stage 1t
     'num_human_id_per_batch': 64,                               # stage 1t
-    'output_triplets_path': 'data/exp6/generated_triplets/',   # stage 1t
-    'model_path':'data/exp6/tamer_256_20_1e3_0.2_15_5000_64.pt',  # stage 1, 2, 3
-    'emb_dir':'data/exp6/emb',                                 # stage 2, 3
-    'eval_dir':'data/exp6/test',                               # stage 3
-    'label_path':'data/exp6/label.json',                       #stage 3
+    'output_triplets_path': 'generated_triplets/',   # stage 1t
+    'model_path':'tamer_256_20_1e3_0.2_15_5000_64.pt',  # stage 1, 2, 3
+    'emb_dir':'emb/',                                 # stage 2, 3
+    'eval_dir':'test/',                               # stage 3
+    'label_path':'exp6/label.json',                       #stage 3
     's3':True,
-    's3_dataset_name':'vggface_exp10'
+    's3_dataset_name':'vggface_exp10',
+    's3_lfw_name':'lfw_eval',
+    'lfw_dataroot':'lfw_224',
+    'lfw_pairs':'LFW_pairs.txt'
 }
 
 
@@ -46,7 +49,6 @@ if __name__ == '__main__':
             parameter_override={
                 'Args/clearml': True,
                 'Args/data_dir': params['data_dir'],
-                'Args/id_csv': params['id_csv'],
                 'Args/batch_size': params['batch_size'],
                 'Args/epochs': params['epochs'],
                 'Args/freeze_layers': params['freeze_layers'],
@@ -55,7 +57,12 @@ if __name__ == '__main__':
                 'Args/learn_rate': params['learn_rate'],
                 'Args/iterations_per_epoch': params['iterations_per_epoch'],
                 'Args/num_human_id_per_batch': params['num_human_id_per_batch'],
-                'Args/output_triplets_path': params['output_triplets_path']
+                'Args/output_triplets_path': params['output_triplets_path'],
+                'Args/s3': params['s3'],
+                'Args/s3_dataset_name': params['s3_dataset_name'],
+                'Args/s3_lfw_name': params['s3_lfw_name'],
+                'Args/exp_name':params['exp_name']
+
             }
         )
     else:
@@ -68,18 +75,23 @@ if __name__ == '__main__':
                 'Args/data_dir': params['data_dir'],
                 'Args/epochs': params['epochs'],
                 'Args/freeze_layers': params['freeze_layers'],
-                'Args/model_path': params['model_path']
-                }
+                'Args/model_path': params['model_path'],
+                'Args/s3': params['s3']
+            }
         )
     pipe.add_step(name='generate_embedding',
         parents=['train_model', ],
         base_task_project=PROJECT_NAME,
         base_task_name='pl_generate',
         parameter_override={
+            'Args/clearml': True,
             'Args/input': params['data_dir'],
             'Args/output': params['emb_dir'],
-            'Args/model_path': params['model_path']
-            }
+            'Args/model_path': params['model_path'],
+            'Args/s3': params['s3'],
+            'Args/s3_dataset_name': params['s3_dataset_name'],
+            'Args/exp_name':params['exp_name']
+        }
     )
     pipe.add_step(name='evaluate',
         parents=['generate_embedding', ],
@@ -91,6 +103,9 @@ if __name__ == '__main__':
             'Args/emb': params['emb_dir'],
             'Args/label': params['label_path'],
             'Args/model_path': params['model_path'],
+            'Args/s3': params['s3'],
+            'Args/s3_dataset_name': params['s3_dataset_name'],
+            'Args/exp_name':params['exp_name']
         }
     )
 
@@ -103,6 +118,6 @@ if __name__ == '__main__':
     pipe.start_locally(True)
 
     # Starting the pipeline (in the background)
-    # pipe.start()
+    # pipe.start(queue='compute')
 
     print('done')

@@ -50,9 +50,12 @@ class Experiment(object):
     def __init__(self, args):
         self.clearml = args.clearml
         if self.clearml:
-            # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
-            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
-            self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib'])
+            self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
+            # self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2') # DEBUG
+            self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
+                docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
+            )
+            self.clearml_task.execute_remotely(queue_name="compute")
         # print("Init successful")
         self.s3 = args.s3
         self.args = args
@@ -75,7 +78,6 @@ class Experiment(object):
         self.num_human_id_per_batch=args.num_human_id_per_batch     # 32
 
         if self.s3:
-            self.clearml_task.execute_remotely(queue_name="compute")
             # Train Dataset
             dataset_name = args.s3_dataset_name
             dataset_project = "datasets/facenet"

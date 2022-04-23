@@ -9,7 +9,7 @@ import json
 import argparse
 from pathlib import Path
 from PIL import Image
-from clearml import Task, Logger
+from clearml import Task, Logger, Dataset
 
 
 PROJECT_NAME = 'facenet'
@@ -26,15 +26,46 @@ class Evaluate(object):
         self.use_clearml = args.use_clearml
         if self.use_clearml:
             self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_evaluate')
+            # self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_evaluate') # DEBUG
             self.logger = Logger.current_logger()
         self.input = os.path.join(args.input, '')
         self.emb = os.path.join(args.emb, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
-        self.resnet.load_state_dict(torch.load(args.model_path), strict=False)
+        self.model_path = args.model_path
+        self.label = args.label
+        self.s3 = args.s3
+        if self.s3:
+            dataset_name = args.s3_dataset_name
+            dataset_project = "datasets/facenet"
+            # Get image dataset
+            s3_dataset_path = Dataset.get(
+                dataset_name=dataset_name, 
+                dataset_project=dataset_project
+            ).get_local_copy()
+            s3_dataset_path = os.path.join(s3_dataset_path, '')
+            self.input=s3_dataset_path+self.input
+            self.label=s3_dataset_path+self.label
+            # Get Trained Model
+            s3_model_path = Dataset.get(
+                dataset_name=args.exp_name+'_models', 
+                dataset_project = 'datasets/facenet'
+            ).get_local_copy()
+            s3_model_path= os.path.join(s3_model_path, '')
+            self.model_path = s3_model_path+self.model_path
+            # Get embeddings
+            s3_embedding_path = Dataset.get(
+                dataset_name=args.exp_name+'_embeddings', 
+                dataset_project = 'datasets/facenet'
+            ).get_local_copy()
+            s3_embedding_path= os.path.join(s3_embedding_path, '')
+            self.emb = s3_embedding_path+self.emb
+            
+        self.resnet.load_state_dict(torch.load(self.model_path), strict=False)
         self.resnet.eval()
         self.mtcnn = MTCNN(image_size=160, margin=0, device='cuda', keep_all=True)
         self.cos = torch.nn.CosineSimilarity(dim=0, eps=1e-6)
-        with open(args.label) as json_file:
+        
+        with open(self.label) as json_file:
             self.golden = json.load(json_file)
 
 
@@ -141,12 +172,16 @@ class Evaluate(object):
                 self.logger.report_scalar(
                     "accuracy", 'euc', iteration=a, value=acc_euc
                 )
-
     
 
     @staticmethod
     def add_eval_args():
         parser = argparse.ArgumentParser()
+        parser.add_argument(
+            "--exp_name",
+            default='experiment',
+            help="Experiment Name"
+        )
         parser.add_argument(
             "-i",
             "--input",
@@ -176,6 +211,17 @@ class Evaluate(object):
             "--use_clearml",
             action="store_true",
             help="Connect to ClearML"
+        )
+        parser.add_argument(
+            "-s",
+            "--s3",
+            action="store_false",
+            help="Call to use s3"
+        )
+        parser.add_argument(
+            "--s3_dataset_name",
+            default='vggface_exp10',
+            help="ClearML Dataset Name"
         )
 
         return parser

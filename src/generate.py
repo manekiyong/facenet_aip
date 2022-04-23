@@ -21,16 +21,24 @@ class Generate(object):
 
    # should init as arguments here
     def __init__(self, args):
-        # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
+        if args.clearml:
+            self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
+            # self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_generate') # DEBUG
+            # self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
+                # docker_setup_bash_script=['pip3 install torchvision']
+            # )
+            # self.clearml_task.execute_remotely(queue_name="compute")
         self.s3 = args.s3
         self.input = os.path.join(args.input, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
         self.model_path = args.model_path
         self.output = os.path.join(args.output, '')
         if self.s3:
+            # if args.clearml: # DEBUG
+            #     self.clearml_task.execute_remotely(queue_name="compute") # DEBUG
             dataset_name = args.s3_dataset_name
             dataset_project = "datasets/facenet"
-            # Get Training Dataset
+            # Get image Dataset
             s3_dataset_path = Dataset.get(
                 dataset_name=dataset_name, 
                 dataset_project=dataset_project
@@ -50,7 +58,7 @@ class Generate(object):
                 dataset_project = 'datasets/facenet'
             )
 
-        self.resnet.load_state_dict(torch.load(args.model_path), strict=False)
+        self.resnet.load_state_dict(torch.load(self.model_path), strict=False)
         self.resnet.eval()
         self.mtcnn = MTCNN(image_size=160, margin=0, device='cuda', keep_all=True)
 
@@ -79,7 +87,7 @@ class Generate(object):
         avg_emb=avg_emb.div(emb_count)
         torch.save(avg_emb, emb_folder+emb_id+'.pt')
         if self.s3:
-            self.emb_dataset.add_files(emb_folder+emb_id+'.pt')
+            self.emb_dataset.add_files(emb_folder+emb_id+'.pt', dataset_path=emb_folder)
         print(emb_id, "Done")
         return
 
@@ -126,6 +134,12 @@ class Generate(object):
             default='model.pt',
             help="Path & Model Name"
         )
+        parser.add_argument(
+            "-c",
+            "--clearml",
+            action="store_false",
+            help="Connect to ClearML"
+        )        
         parser.add_argument(
             "-s",
             "--s3",
