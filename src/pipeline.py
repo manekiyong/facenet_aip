@@ -32,12 +32,15 @@ if __name__ == '__main__':
     # Connecting ClearML with the current pipeline,
     # from here on everything is logged automatically
 
-
+    task = Task.init(project_name=PROJECT_NAME, task_name=PIPELINE_NAME)
+    task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04",
+                        docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
+    )
 
     pipe = PipelineController(
         name=PIPELINE_NAME,
         project=PROJECT_NAME,
-        version='0.0.1',
+        version='0.1',
         add_pipeline_tags=False,
     )
     print("Pipe created")
@@ -115,9 +118,9 @@ if __name__ == '__main__':
     # pipe.add_step(name='generate_embedding', parents=['train_model', ], base_task_project=PROJECT_NAME, base_task_name=args.task_name+' generate')
 
     # for debugging purposes use local jobs
-    pipe.start_locally(True)
+    # pipe.start_locally(True)
 
     # Starting the pipeline (in the background)
-    # pipe.start(queue='compute')
+    pipe.start(queue='compute')
 
     print('done')
