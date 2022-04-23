@@ -50,8 +50,8 @@ class Experiment(object):
     def __init__(self, args):
         self.clearml = args.clearml
         if self.clearml:
-            self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
-            # self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2') # DEBUG
+            # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
+            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2') # DEBUG
             self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
                 docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
             )
