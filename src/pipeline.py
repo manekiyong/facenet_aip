@@ -45,7 +45,7 @@ if __name__ == '__main__':
         #Add triplet step
         pipe.add_step(name='train_model',
             base_task_project=PROJECT_NAME,
-            # base_task_name='pl_train_triplet2',
+            base_task_name='pl_train_triplet2',
             parameter_override={
                 'Args/clearml': True,
                 'Args/data_dir': params['data_dir'],
@@ -68,7 +68,7 @@ if __name__ == '__main__':
     else:
         pipe.add_step(name='train_model',
             base_task_project=PROJECT_NAME,
-            # base_task_name='pl_train',
+            base_task_name='pl_train',
             parameter_override={
                 'Args/clearml': True,
                 'Args/batch_size': params['batch_size'],
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     pipe.add_step(name='generate_embedding',
         parents=['train_model', ],
         base_task_project=PROJECT_NAME,
-        # base_task_name='pl_generate',
+        base_task_name='pl_generate',
         parameter_override={
             'Args/clearml': True,
             'Args/input': params['data_dir'],
@@ -96,7 +96,7 @@ if __name__ == '__main__':
     pipe.add_step(name='evaluate',
         parents=['generate_embedding', ],
         base_task_project=PROJECT_NAME,
-        # base_task_name='pl_evaluate',
+        base_task_name='pl_evaluate',
         parameter_override={
             'Args/use_clearml': True,
             'Args/input': params['eval_dir'],
