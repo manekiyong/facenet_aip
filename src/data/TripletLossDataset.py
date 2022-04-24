@@ -140,13 +140,17 @@ class TripletFaceDataset(Dataset):
                         neg_name
                     ]
                 )
-
+        if self.epoch > 1:
+            print("Removing Previous Epoch's file...")
+            file_name = '{}epoch_{}_training_triplets_{}_identities_{}_batch_{}.npy'.format(self.output_triplets_path,
+                self.epoch-1, self.num_triplets, self.num_human_identities_per_batch, self.triplet_batch_size
+            )
+            os.remove(file_name)
         print("Saving training triplets list in '{}' directory ...".format(self.output_triplets_path))
-        np.save('{}epoch_{}_training_triplets_{}_identities_{}_batch_{}.npy'.format(self.output_triplets_path,
+        file_name = '{}epoch_{}_training_triplets_{}_identities_{}_batch_{}.npy'.format(self.output_triplets_path,
                 self.epoch, self.num_triplets, self.num_human_identities_per_batch, self.triplet_batch_size
-            ),
-            triplets
-        )
+            )
+        np.save(file_name,triplets)
         print("Training triplets' list Saved!\n")
 
         return triplets
