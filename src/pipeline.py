@@ -2,26 +2,26 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'dryrun'
+PIPELINE_NAME = 'tamer_exp6_256_5_5000_64_13'
 
 params = {
     'exp_name':PIPELINE_NAME,
     'triplet':True,                                             # stage 1t
     'data_dir':'train/',                              # stage 1, 2
     'batch_size':256,                                           # stage 1
-    'epochs':1,                                                # stage 1
+    'epochs':5,                                                # stage 1
     'learn_rate':1e-3,                                          # stage 1t
     'margin':0.2,                                               # stage 1t
-    'freeze_layers':15,                                         # stage 1
-    'iterations_per_epoch': 1000,                               # stage 1t
+    'freeze_layers':13,                                         # stage 1
+    'iterations_per_epoch': 5000,                               # stage 1t
     'num_human_id_per_batch': 64,                               # stage 1t
     'output_triplets_path': 'generated_triplets/',   # stage 1t
-    'model_path':'tamer_256_20_1e3_0.2_15_5000_64.pt',  # stage 1, 2, 3
+    'model_path':PIPELINE_NAME+'.pt',  # stage 1, 2, 3
     'emb_dir':'emb/',                                 # stage 2, 3
     'eval_dir':'test/',                               # stage 3
-    'label_path':'exp6/label.json',                       #stage 3
+    'label_path':'label.json',                       #stage 3
     's3':True,
-    's3_dataset_name':'vggface_exp10',
+    's3_dataset_name':'vggface_exp6',
     's3_lfw_name':'lfw_eval',
     'lfw_dataroot':'lfw_224',
     'lfw_pairs':'LFW_pairs.txt'
@@ -64,6 +64,8 @@ if __name__ == '__main__':
                 'Args/s3': params['s3'],
                 'Args/s3_dataset_name': params['s3_dataset_name'],
                 'Args/s3_lfw_name': params['s3_lfw_name'],
+                'Args/lfw_dataroot': params['lfw_dataroot'],
+                'Args/lfw_pairs': params['lfw_pairs'],
                 'Args/exp_name':params['exp_name']
 
             }
@@ -113,14 +115,14 @@ if __name__ == '__main__':
     )
 
     
-    pipe.set_default_execution_queue('default')
+    # pipe.set_default_execution_queue('compute')
 
     # pipe.add_step(name='generate_embedding', parents=['train_model', ], base_task_project=PROJECT_NAME, base_task_name=args.task_name+' generate')
 
     # for debugging purposes use local jobs
-    # pipe.start_locally(True)
+    pipe.start_locally(True)
 
     # Starting the pipeline (in the background)
-    pipe.start(queue='compute')
+    # pipe.start(queue='compute')
 
     print('done')

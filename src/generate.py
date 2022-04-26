@@ -23,7 +23,7 @@ class Generate(object):
     def __init__(self, args):
         if args.clearml:
             # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
-            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_generate') # DEBUG
+            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_generate_'+args.exp_name) # DEBUG
             # self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
                 # docker_setup_bash_script=['pip3 install torchvision']
             # )
@@ -137,13 +137,13 @@ class Generate(object):
         parser.add_argument(
             "-c",
             "--clearml",
-            action="store_false",
+            action="store_true",
             help="Connect to ClearML"
         )        
         parser.add_argument(
             "-s",
             "--s3",
-            action="store_false",
+            action="store_true",
             help="Call to use s3"
         )
         parser.add_argument(

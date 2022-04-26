@@ -26,7 +26,7 @@ class Evaluate(object):
         self.use_clearml = args.use_clearml
         if self.use_clearml:
             # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_evaluate')
-            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_evaluate') # DEBUG
+            self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_evaluate_'+args.exp_name) # DEBUG
             self.logger = Logger.current_logger()
         self.input = os.path.join(args.input, '')
         self.emb = os.path.join(args.emb, '')
@@ -215,7 +215,7 @@ class Evaluate(object):
         parser.add_argument(
             "-s",
             "--s3",
-            action="store_false",
+            action="store_true",
             help="Call to use s3"
         )
         parser.add_argument(
