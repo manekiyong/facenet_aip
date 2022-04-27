@@ -52,17 +52,18 @@ class Experiment(object):
         if self.clearml:
             # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_train_triplet2')
             self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_train_triplet2_'+args.exp_name) # DEBUG
-            self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
-                docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
-            )
-            self.clearml_task.execute_remotely(queue_name="compute")
+            if args.remote:
+                self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
+                    docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
+                )
+                self.clearml_task.execute_remotely()
         # print("Init successful")
         self.s3 = args.s3
         self.args = args
         self.data_dir = os.path.join(args.data_dir, '')       # data_dir = 'exp10/train'
         self.batch_size = args.batch_size   # batch_size = 256
         self.epochs = args.epochs           # epochs = 20
- 
+        self.semihard = args.semihard
         self.workers = 0 if os.name == 'nt' else 2
         self.learn_rate = args.learn_rate   
         self.frozen = args.freeze_layers    # 14
@@ -345,9 +346,20 @@ class Experiment(object):
                 
                 pos_dists = l2_distance.forward(anc_embeddings, pos_embeddings)
                 neg_dists = l2_distance.forward(anc_embeddings, neg_embeddings)
-                # Hard Negative
-                all = (neg_dists - pos_dists < self.margin).cpu().numpy().flatten()
-                valid_triplets = np.where(all == 1)
+                if self.semihard:
+                    # Semi-Hard Negative triplet selection
+                    #  (negative_distance - positive_distance < margin) AND (positive_distance < negative_distance)
+                    #   Based on: https://github.com/davidsandberg/facenet/blob/master/src/train_tripletloss.py#L295
+                    first_condition = (neg_dists - pos_dists < self.margin).cpu().numpy().flatten()
+                    second_condition = (pos_dists < neg_dists).cpu().numpy().flatten()
+                    all = (np.logical_and(first_condition, second_condition))
+                    valid_triplets = np.where(all == 1)
+                else:
+                    # Hard Negative triplet selection
+                    #  (negative_distance - positive_distance < margin)
+                    #   Based on: https://github.com/davidsandberg/facenet/blob/master/src/train_tripletloss.py#L296
+                    all = (neg_dists - pos_dists < self.margin).cpu().numpy().flatten()
+                    valid_triplets = np.where(all == 1)
                 
                 anc_valid_embeddings = anc_embeddings[valid_triplets]
                 pos_valid_embeddings = pos_embeddings[valid_triplets]
@@ -482,6 +494,11 @@ class Experiment(object):
             default='generated_triplets/',
             help="Path to output the generated triplets"
         )
+        parser.add_argument(
+            "--semihard",
+            action="store_true",
+            help="Call flag to use semihard exemplars"
+        )
         # Eval (LFW) args
         parser.add_argument(
             "--lfw_dataroot",
@@ -516,7 +533,12 @@ class Experiment(object):
             "--clearml",
             action="store_true",
             help="Connect to ClearML"
-        )        
+        )       
+        parser.add_argument(
+            "--remote",
+            action="store_true",
+            help="Remote Execution"
+        )     
         parser.add_argument(
             "-s",
             "--s3",

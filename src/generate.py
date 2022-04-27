@@ -24,10 +24,11 @@ class Generate(object):
         if args.clearml:
             # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_generate')
             self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_generate_'+args.exp_name) # DEBUG
-            # self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
-                # docker_setup_bash_script=['pip3 install torchvision']
-            # )
-            # self.clearml_task.execute_remotely(queue_name="compute")
+            if args.remote:
+                self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
+                    docker_setup_bash_script=['pip3 install torchvision']
+                )
+                self.clearml_task.execute_remotely()
         self.s3 = args.s3
         self.input = os.path.join(args.input, '')
         self.resnet = InceptionResnetV1(pretrained=None, classify=False)
@@ -95,8 +96,11 @@ class Generate(object):
     def generate_all(self):
         count=0
         Path(self.output).mkdir(parents=True, exist_ok=True)
-        for i in os.listdir(self.input):
+        dir_list = os.listdir(self.input)
+        input_len = len(dir_list)
+        for i in dir_list:
             count+=1
+            print("{}/{}: ".format(count, input_len), end="")
             self.generate_embedding(i, 
                         self.input,
                         emb_folder=self.output)
@@ -146,6 +150,11 @@ class Generate(object):
             action="store_true",
             help="Call to use s3"
         )
+        parser.add_argument(
+            "--remote",
+            action="store_true",
+            help="Remote Execution"
+        )  
         parser.add_argument(
             "--s3_dataset_name",
             default='vggface_exp10',

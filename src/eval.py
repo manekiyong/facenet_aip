@@ -27,6 +27,11 @@ class Evaluate(object):
         if self.use_clearml:
             # self.clearml_task = Task.get_task(project_name=PROJECT_NAME, task_name='pl_evaluate')
             self.clearml_task = Task.init(project_name=PROJECT_NAME, task_name='pl_evaluate_'+args.exp_name) # DEBUG
+            if args.remote:
+                self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
+                    docker_setup_bash_script=['pip3 install torchvision']
+                )
+                self.clearml_task.execute_remotely()
             self.logger = Logger.current_logger()
         self.input = os.path.join(args.input, '')
         self.emb = os.path.join(args.emb, '')
@@ -212,6 +217,11 @@ class Evaluate(object):
             action="store_true",
             help="Connect to ClearML"
         )
+        parser.add_argument(
+            "--remote",
+            action="store_true",
+            help="Remote Execution"
+        )  
         parser.add_argument(
             "-s",
             "--s3",

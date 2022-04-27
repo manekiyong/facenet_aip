@@ -6,6 +6,7 @@ src/*.pt
 **/LFW_utils/**/*.png
 **/LFW_utils/logs/**/*.txt
 *.csv
+**/emb/**/*.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

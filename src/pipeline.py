@@ -2,10 +2,11 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'tamer_exp6_b256_e5_i5000_id64_f15_s23'
+PIPELINE_NAME = 'tamer_exp6_b256_e1_i5000_id64_f15_s23'
 
 params = {
     'exp_name':PIPELINE_NAME,
+    'remote': False,
     'triplet':True,                                             # stage 1t
     'data_dir':'train/',                              # stage 1, 2
     'batch_size':256,                                           # stage 1
@@ -15,27 +16,24 @@ params = {
     'freeze_layers':15,                                         # stage 1
     'iterations_per_epoch': 5000,                               # stage 1t
     'num_human_id_per_batch': 64,                               # stage 1t
+    'semihard': True,
     'output_triplets_path': 'generated_triplets/',   # stage 1t
     'model_path':PIPELINE_NAME+'.pt',  # stage 1, 2, 3
     'emb_dir':'emb/',                                 # stage 2, 3
     'eval_dir':'test/',                               # stage 3
     'label_path':'label.json',                       #stage 3
     's3':True,
-    's3_dataset_name':'vggface_exp6',
+    's3_dataset_name':'celeba_exp6',
     's3_lfw_name':'lfw_eval',
     'lfw_dataroot':'lfw_224',
     'lfw_pairs':'LFW_pairs.txt'
 }
 
 
+
 if __name__ == '__main__':
     # Connecting ClearML with the current pipeline,
     # from here on everything is logged automatically
-
-    task = Task.init(project_name=PROJECT_NAME, task_name=PIPELINE_NAME)
-    task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04",
-                        docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
-    )
 
     pipe = PipelineController(
         name=PIPELINE_NAME,
@@ -48,9 +46,10 @@ if __name__ == '__main__':
         #Add triplet step
         pipe.add_step(name='train_model',
             base_task_project=PROJECT_NAME,
-            base_task_name='pl_train_triplet2',
+            base_task_name='pl_train_triplet2_'+PIPELINE_NAME,
             parameter_override={
                 'Args/clearml': True,
+                'Args/remote': params['remote'],
                 'Args/data_dir': params['data_dir'],
                 'Args/batch_size': params['batch_size'],
                 'Args/epochs': params['epochs'],
@@ -61,6 +60,7 @@ if __name__ == '__main__':
                 'Args/iterations_per_epoch': params['iterations_per_epoch'],
                 'Args/num_human_id_per_batch': params['num_human_id_per_batch'],
                 'Args/output_triplets_path': params['output_triplets_path'],
+                'Args/semihard': params['semihard'],
                 'Args/s3': params['s3'],
                 'Args/s3_dataset_name': params['s3_dataset_name'],
                 'Args/s3_lfw_name': params['s3_lfw_name'],
@@ -68,7 +68,8 @@ if __name__ == '__main__':
                 'Args/lfw_pairs': params['lfw_pairs'],
                 'Args/exp_name':params['exp_name']
 
-            }
+            },
+            execution_queue='compute'
         )
     else:
         pipe.add_step(name='train_model',
@@ -76,6 +77,7 @@ if __name__ == '__main__':
             base_task_name='pl_train',
             parameter_override={
                 'Args/clearml': True,
+                'Args/remote': params['remote'],
                 'Args/batch_size': params['batch_size'],
                 'Args/data_dir': params['data_dir'],
                 'Args/epochs': params['epochs'],
@@ -87,21 +89,23 @@ if __name__ == '__main__':
     pipe.add_step(name='generate_embedding',
         parents=['train_model', ],
         base_task_project=PROJECT_NAME,
-        base_task_name='pl_generate',
+        base_task_name='pl_generate_'+PIPELINE_NAME,
         parameter_override={
             'Args/clearml': True,
+            'Args/remote': params['remote'],
             'Args/input': params['data_dir'],
             'Args/output': params['emb_dir'],
             'Args/model_path': params['model_path'],
             'Args/s3': params['s3'],
             'Args/s3_dataset_name': params['s3_dataset_name'],
             'Args/exp_name':params['exp_name']
-        }
+        },
+        execution_queue='compute'
     )
     pipe.add_step(name='evaluate',
         parents=['generate_embedding', ],
         base_task_project=PROJECT_NAME,
-        base_task_name='pl_evaluate',
+        base_task_name='pl_evaluate_'+PIPELINE_NAME,
         parameter_override={
             'Args/use_clearml': True,
             'Args/input': params['eval_dir'],
@@ -111,7 +115,8 @@ if __name__ == '__main__':
             'Args/s3': params['s3'],
             'Args/s3_dataset_name': params['s3_dataset_name'],
             'Args/exp_name':params['exp_name']
-        }
+        },
+        execution_queue='compute'
     )
 
     
@@ -120,9 +125,11 @@ if __name__ == '__main__':
     # pipe.add_step(name='generate_embedding', parents=['train_model', ], base_task_project=PROJECT_NAME, base_task_name=args.task_name+' generate')
 
     # for debugging purposes use local jobs
-    pipe.start_locally(True)
+    # pipe.start_locally(True)
 
     # Starting the pipeline (in the background)
-    # pipe.start(queue='compute')
-
+    if params['remote']:
+        pipe.start(queue='cpu-only')
+    else:
+        pipe.start_locally(True)
     print('done')
