@@ -274,7 +274,7 @@ class Experiment(object):
             count+=1
         
         optimizer = optim.Adam(resnet.parameters(), lr=self.learn_rate)
-        scheduler = MultiStepLR(optimizer, [5, 10])
+        scheduler = MultiStepLR(optimizer, [2, 3])
 
         trans = transforms.Compose([
             transforms.Resize(size=self.image_size),

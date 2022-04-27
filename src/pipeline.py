@@ -2,7 +2,7 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'tamer_exp6_256_5_5000_64_13'
+PIPELINE_NAME = 'tamer_exp6_b256_e5_i5000_id64_f15_s23'
 
 params = {
     'exp_name':PIPELINE_NAME,
@@ -12,7 +12,7 @@ params = {
     'epochs':5,                                                # stage 1
     'learn_rate':1e-3,                                          # stage 1t
     'margin':0.2,                                               # stage 1t
-    'freeze_layers':13,                                         # stage 1
+    'freeze_layers':15,                                         # stage 1
     'iterations_per_epoch': 5000,                               # stage 1t
     'num_human_id_per_batch': 64,                               # stage 1t
     'output_triplets_path': 'generated_triplets/',   # stage 1t
