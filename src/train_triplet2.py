@@ -56,7 +56,7 @@ class Experiment(object):
                 self.clearml_task.set_base_docker("nvidia/cuda:11.4.0-cudnn8-devel-ubuntu20.04", 
                     docker_setup_bash_script=['pip3 install sklearn', 'pip3 install matplotlib']
                 )
-                self.clearml_task.execute_remotely()
+                self.clearml_task.execute_remotely(queue_name="compute")
         # print("Init successful")
         self.s3 = args.s3
         self.args = args
@@ -275,7 +275,7 @@ class Experiment(object):
             count+=1
         
         optimizer = optim.Adam(resnet.parameters(), lr=self.learn_rate)
-        scheduler = MultiStepLR(optimizer, [2, 3])
+        scheduler = MultiStepLR(optimizer, [5, 10])
 
         trans = transforms.Compose([
             transforms.Resize(size=self.image_size),

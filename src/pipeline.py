@@ -2,28 +2,28 @@ from clearml import Task
 from clearml.automation import PipelineController
 
 PROJECT_NAME = 'facenet'
-PIPELINE_NAME = 'tamer_exp6_b256_e1_i5000_id64_f15_s23'
+PIPELINE_NAME = 'tamer_exp11_b256_e1_i10000_id64_f15'
 
 params = {
     'exp_name':PIPELINE_NAME,
-    'remote': False,
     'triplet':True,                                             # stage 1t
     'data_dir':'train/',                              # stage 1, 2
     'batch_size':256,                                           # stage 1
-    'epochs':5,                                                # stage 1
+    'epochs':1,                                                # stage 1
     'learn_rate':1e-3,                                          # stage 1t
     'margin':0.2,                                               # stage 1t
     'freeze_layers':15,                                         # stage 1
-    'iterations_per_epoch': 5000,                               # stage 1t
+    'iterations_per_epoch': 10000,                               # stage 1t
     'num_human_id_per_batch': 64,                               # stage 1t
-    'semihard': True,
+    'semihard': False,
     'output_triplets_path': 'generated_triplets/',   # stage 1t
     'model_path':PIPELINE_NAME+'.pt',  # stage 1, 2, 3
     'emb_dir':'emb/',                                 # stage 2, 3
     'eval_dir':'test/',                               # stage 3
     'label_path':'label.json',                       #stage 3
+    'remote': True,
     's3':True,
-    's3_dataset_name':'celeba_exp6',
+    's3_dataset_name':'celeba_exp11',
     's3_lfw_name':'lfw_eval',
     'lfw_dataroot':'lfw_224',
     'lfw_pairs':'LFW_pairs.txt'

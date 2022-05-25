@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import os
 import json
+from tqdm import tqdm
 import argparse
 from pathlib import Path
 from PIL import Image
@@ -74,25 +75,28 @@ class Evaluate(object):
             self.golden = json.load(json_file)
 
 
-    def load_emb(self, folder='emb/', norm=False, transpose=False):
+    def load_emb(self, folder='emb/', transpose=False):
         id_list = []
         for i in os.listdir(folder):
             id_val = int(i[:-3])
             id_list.append(id_val)
         id_list.sort()
         emb_list = []
+        emb_list_norm = []
         for i in id_list:
             temp_emb = torch.load(folder+str(i)+'.pt')
-            if norm:
-                temp_emb = temp_emb / torch.linalg.norm(temp_emb)
+            norm_emb = temp_emb / torch.linalg.norm(temp_emb)
             emb_list.append(temp_emb)
+            emb_list_norm.append(norm_emb)
         emb_list = torch.stack(emb_list)
+        emb_list_norm = torch.stack(emb_list_norm)
         if transpose:
             emb_list = torch.transpose(emb_list, 0, 1)
-        return emb_list, id_list
+            emb_list_norm = torch.transpose(emb_list_norm,0,1)
+        return emb_list, emb_list_norm, id_list
 
 
-    def predict_id(self, img_path, emb_list, k=[1,3,5]):
+    def predict_id(self, img_path, emb_list, emb_list_norm, k=[1,3,5]):
         l2_distance = PairwiseDistance(p=2)
         temp_sim_cos = []
         temp_sim_euc = []
@@ -106,7 +110,7 @@ class Evaluate(object):
             return [[-1]]*len(k), [[-1]]*len(k), [[-1]]*len(k), [[-1]]*len(k)
         
         # Compute Cosine Similarity (By Matrix Multiplication)
-        temp_sim_cos = torch.matmul(img_embedding, emb_list)
+        temp_sim_cos = torch.matmul(img_embedding, emb_list_norm)
         # Compute L2 Dist Similarity
         t_embedding_list = torch.transpose(emb_list, 0, 1)
         for j in t_embedding_list:
@@ -123,9 +127,6 @@ class Evaluate(object):
             topk_cos = torch.topk(temp_sim_cos, i)
             topk_euc = np.argpartition(temp_sim_euc, i)[:i]
             topk_euc_conf = temp_sim_euc[topk_euc]
-            if set(topk_cos.indices.tolist()) != set(topk_euc):
-                print(topk_cos)
-                print(topk_euc)
             indices_list_cos.append(topk_cos.indices.tolist())
             values_list_cos.append(topk_cos.values.tolist())
             indices_list_euc.append(topk_euc)
@@ -134,7 +135,7 @@ class Evaluate(object):
         return indices_list_cos, values_list_cos, indices_list_euc, values_list_euc
 
     def evaluate(self):
-        embeddings, ids = self.load_emb(self.emb, norm=True, transpose=True)
+        embeddings, embedding_norm, ids = self.load_emb(self.emb, transpose=True)
         k = [1,3,5]
         ids = np.array(ids)   
 
@@ -145,10 +146,10 @@ class Evaluate(object):
         for i in k: 
             result_dict_cos[i] = []
             result_dict_euc[i] = []
-
-        for i in os.listdir(self.input):
+        prog = tqdm(enumerate(os.listdir(self.input)))
+        for index, i in prog:
             img_label = int(self.golden[i])
-            result_index_list_cos,_, result_index_list_euc,_ = self.predict_id(self.input+'/'+i, embeddings, k=k)
+            result_index_list_cos,_, result_index_list_euc,_ = self.predict_id(self.input+'/'+i, embeddings, embedding_norm, k=k)
             for index, j in enumerate(k):
                 result_cos = ids[result_index_list_cos[index]]
                 result_euc = ids[result_index_list_euc[index]]

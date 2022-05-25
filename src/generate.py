@@ -3,6 +3,7 @@ from model.mtcnn import MTCNN
 
 import torch
 import numpy as np
+from tqdm import tqdm
 import os
 import argparse
 from pathlib import Path
@@ -89,7 +90,7 @@ class Generate(object):
         torch.save(avg_emb, emb_folder+emb_id+'.pt')
         if self.s3:
             self.emb_dataset.add_files(emb_folder+emb_id+'.pt', dataset_path=emb_folder)
-        print(emb_id, "Done")
+        # print(emb_id, "Done")
         return
 
 
@@ -98,9 +99,9 @@ class Generate(object):
         Path(self.output).mkdir(parents=True, exist_ok=True)
         dir_list = os.listdir(self.input)
         input_len = len(dir_list)
-        for i in dir_list:
+        prog = enumerate(tqdm(dir_list))
+        for index, i in prog:
             count+=1
-            print("{}/{}: ".format(count, input_len), end="")
             self.generate_embedding(i, 
                         self.input,
                         emb_folder=self.output)
